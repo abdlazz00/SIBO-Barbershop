@@ -1,58 +1,126 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Howell Barbershop — Sistem Informasi Manajemen & Booking Online
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Sistem informasi manajemen operasional dan booking online mandiri untuk **Howell Barbershop** (Jaringan Barbershop Premium Multi-Cabang). Sistem ini dirancang untuk mendigitalisasi operasional harian, mulai dari pemesanan slot potong rambut oleh pelanggan, antrean kasir, pencatatan transaksi kasir POS (*Point of Sale*), pembagian komisi barber otomatis, hingga analisis keuangan owner.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🚀 Fitur Utama Berdasarkan Role
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+### 1. Pelanggan (Guest / Member)
+*   **Landing Page Dinamis**: Menampilkan galeri, daftar cabang terdekat, jam operasional, menu layanan premium, dan daftar barber professional yang bertugas.
+*   **Booking Wizard Mandiri (Self-Service)**:
+    *   Pemilihan Cabang -> Pemilihan Layanan -> Pemilihan Barber -> Pemilihan Tanggal & Slot Waktu -> Input Data Konfirmasi.
+    *   Kalkulasi slot waktu kosong secara dinamis berdasarkan jam kerja barber, jadwal cuti, dan durasi layanan terpilih.
+    *   Harga layanan menyesuaikan secara dinamis jika barber yang dipilih memiliki harga khusus (*override pricing*).
+*   **Customer Profile**: Kelola profil, ubah kontak, dan ganti foto profil langsung dari header landing page.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### 2. Kasir (Cashier)
+*   **Antrean Dashboard**: Pemantauan antrean hari ini (`Confirmed`, `In-Progress`, `Completed`, `Cancelled`) secara real-time.
+*   **Queue Control**: Ubah status antrean pelanggan saat tiba di outlet (`Mulai Service`) atau batalkan jika berhalangan.
+*   **Walk-in Booking**: Input pemesanan langsung untuk pelanggan walk-in yang datang ke outlet secara manual.
+*   **Point of Sale (POS) & Checkout**:
+    *   Layanan potong rambut otomatis masuk ke keranjang POS saat checkout antrean.
+    *   Dapat menambahkan produk ritel (pomade, vitamin, shampoo) ke keranjang belanja dengan pengecekan stok otomatis.
+    *   Pencatatan transaksi secara atomik (mengurangi stok produk, memperbarui status booking, dan menghitung komisi barber secara instan).
+    *   Pencetakan struk transaksi (*receipt* thermal).
 
-## Learning Laravel
+### 3. Barber
+*   **Personal Dashboard**: Melihat antrean tugas harian yang di-assign kepadanya.
+*   **Laporan Komisi**: Transparansi perolehan komisi bulanan (total komisi & rincian komisi per transaksi service).
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### 4. Pemilik (Owner)
+*   **Dashboard Analytics**: Visualisasi grafik tren omset bisnis harian (layanan + produk retail), total penjualan produk, status booking, dan performa kerja masing-masing barber.
+*   **CRUD Staff & Karyawan**: Manajemen akun Kasir dan Barber lengkap dengan pemetaan cabang kerja, persentase komisi barber, dan upload foto profil karyawan.
+*   **CRUD Menu Layanan & Override Harga**:
+    *   Kelola katalog layanan utama, durasi pengerjaan, kategori, harga default, dan foto layanan.
+    *   **Override Harga Barber**: Mengatur tarif khusus untuk layanan tertentu per barber (misal: tarif lebih mahal untuk Senior Barber).
+*   **CRUD Produk Retail**: Inventarisasi produk retail per cabang dengan pelacakan stok dan foto produk.
+*   **Jadwal & Shift Kerja**: Pengaturan jadwal kerja mingguan barber dan penandaan tanggal cuti/libur barber (*rolling leave*).
+*   **Laporan Komisi Global**: Rekapitulasi komisi seluruh barber dari semua cabang dengan filter rentang tanggal.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+## 🛠️ Tech Stack & Arsitektur
 
-## Agentic Development
+Sistem ini dibangun menggunakan arsitektur modern berkinerja tinggi:
+*   **Backend Framework**: Laravel 12 (PHP 8.2+) dengan Service-Repository Pattern.
+*   **Frontend Framework**: React 18 + Inertia.js (tanpa reload halaman, terasa seperti SPA).
+*   **Styling**: Vanilla CSS custom dengan utility CSS pendukung untuk fleksibilitas premium.
+*   **Real-time Communication**: Laravel Reverb (WebSockets).
+*   **Database**: PostgreSQL / SQLite (mendukung transaksi atomik).
+*   **Image Processing**: Native PHP GD Library untuk kompresi dan optimasi otomatis foto yang diunggah (di bawah 2MB, resolusi maks 1000px).
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+---
 
+## 💻 Panduan Instalasi & Jalankan Lokal
+
+Ikuti langkah-langkah di bawah ini untuk menjalankan project di komputer lokal Anda:
+
+### 1. Persiapan Awal
+Pastikan Anda sudah menginstal **PHP (v8.2+)**, **Composer**, **Node.js (v18+)**, dan database (**MySQL/PostgreSQL/SQLite**).
+
+### 2. Kloning Project & Install Dependensi
 ```bash
-composer require laravel/boost --dev
+# Clone repositori
+git clone <url-repo-anda>
+cd howell-barber
 
-php artisan boost:install
+# Install dependensi PHP (Laravel)
+composer install
+
+# Install dependensi Javascript (React)
+npm install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### 3. Konfigurasi Environment (`.env`)
+Salin file `.env.example` menjadi `.env` dan konfigurasikan koneksi database Anda:
+```bash
+cp .env.example .env
+```
+Buat kunci aplikasi:
+```bash
+php artisan key:generate
+```
 
-## Contributing
+### 4. Jalankan Migrasi & Database Seeder
+Lakukan migrasi tabel beserta data demo bawaan (seperti cabang, akun staff default, layanan, dan produk retail):
+```bash
+php artisan migrate:fresh --seed
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 5. Buat Symlink Storage
+Agar foto staff, layanan, dan produk yang diunggah dapat diakses oleh publik:
+```bash
+php artisan storage:link
+```
 
-## Code of Conduct
+### 6. Jalankan Server Pengembangan
+Jalankan Laravel Backend, Vite Server (Frontend compiler), dan Reverb Server (Websockets) secara bersamaan:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+# Jalankan Laravel Server
+php artisan serve
 
-## Security Vulnerabilities
+# Jalankan Vite Compiler (Terminal Terpisah)
+npm run dev
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+# Jalankan Laravel Reverb WebSockets (Terminal Terpisah, Opsional untuk Real-time Notification)
+php artisan reverb:start
+```
+Buka browser dan akses aplikasi di: `http://127.0.0.1:8000`
 
-## License
+---
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## 🔑 Akun Demo Pengujian (Seeder)
+
+Gunakan akun-akun di bawah ini untuk menguji berbagai peran di dalam sistem (password untuk semua akun adalah `password`):
+
+| Role | Email | Cabang Kerja | Deskripsi |
+|---|---|---|---|
+| **Owner (Joko)** | `owner@howell.com` | Semua Cabang | Akses penuh statistik bisnis, kelola staff, harga, dan jadwal. |
+| **Cashier Kemang (Andi)** | `cashier.kemang@howell.com` | Cabang Kemang | Kasir untuk outlet Kemang, POS & kelola antrean harian. |
+| **Cashier Senopati (Siti)** | `cashier.senopati@howell.com` | Cabang Senopati | Kasir untuk outlet Senopati. |
+| **Barber Kemang (Budi)** | `budi.barber@howell.com` | Cabang Kemang | Akun Senior Barber Kemang, komisi default 45%. |
+| **Barber Kemang (Cecep)** | `cecep.barber@howell.com` | Cabang Kemang | Akun Junior Barber Kemang, komisi default 35%. |
+| **Barber Senopati (Dedi)** | `dedi.barber@howell.com` | Cabang Senopati | Akun Senior Barber Senopati. |
+| **Customer Member (Rian)** | `rian@gmail.com` | - | Akun member pelanggan untuk auto-fill form booking. |
