@@ -5,7 +5,7 @@ export default function Welcome({ auth, branches = [], services = [], barbers = 
         <>
             <Head title="Howell Barbershop - Premium Grooming Experience" />
             <div className="min-h-screen bg-primary-deeper text-white font-sans selection:bg-accent-lime selection:text-ink-deep">
-                
+
                 {/* Navbar */}
                 <header className="sticky top-0 z-50 backdrop-blur-md bg-primary-deeper/80 border-b border-hairline-violet">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -29,7 +29,6 @@ export default function Welcome({ auth, branches = [], services = [], barbers = 
                         {/* Nav Links */}
                         <nav className="hidden md:flex items-center space-x-8 text-sm font-medium text-on-dark-muted">
                             <a href="#about" className="hover:text-white transition duration-200">Tentang Kami</a>
-                            <a href="#services" className="hover:text-white transition duration-200">Layanan</a>
                             <a href="#barbers" className="hover:text-white transition duration-200">Barber</a>
                             <a href="#branches" className="hover:text-white transition duration-200">Cabang</a>
                         </nav>
@@ -89,22 +88,29 @@ export default function Welcome({ auth, branches = [], services = [], barbers = 
                 </header>
 
                 {/* Hero Section */}
-                <section className="relative overflow-hidden pt-20 pb-32 lg:pt-32 lg:pb-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary via-primary-deeper to-primary-deeper">
-                    {/* Decorative Elements */}
-                    <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-accent-violet/10 rounded-full blur-3xl -z-10" />
-                    
+                <section className="relative overflow-hidden pt-20 pb-32 lg:pt-32 lg:pb-40 bg-primary-deeper">
+                    {/* Background Image with Overlay */}
+                    <div className="absolute inset-0 z-0">
+                        <img
+                            src="/images/bg_hero_section.jpg"
+                            alt="Howell Barbershop Hero"
+                            className="w-full h-full object-cover object-center"
+                        />
+                        <div className="absolute inset-0 bg-[#150B35]/50 backdrop-blur-[2px]" />
+                    </div>
+
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
                         <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full border border-hairline-violet bg-primary-dark/80 text-xs font-semibold text-accent-lime tracking-wide uppercase mb-8">
                             <span>★</span>
                             <span>Barbershop Premium Multi-Cabang</span>
                             <span>★</span>
                         </div>
-                        
+
                         <h1 className="font-display font-bold text-5xl md:text-7xl lg:text-8xl tracking-tight leading-none mb-8">
                             Premium Grooming<br />
                             For The <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-lime to-accent-lime-muted">Gentlemen</span>
                         </h1>
-                        
+
                         <p className="max-w-2xl mx-auto text-on-dark-muted text-base md:text-lg lg:text-xl leading-relaxed mb-12">
                             Rasakan standar ketampanan baru dengan layanan premium di Howell Barbershop. Pangkas rambut presisi, pijat relaksasi kepala, dan pewarnaan kelas dunia oleh barber ahli.
                         </p>
@@ -117,115 +123,38 @@ export default function Welcome({ auth, branches = [], services = [], barbers = 
                                 BUAT JANJI SEKARANG
                             </Link>
                             <a
-                                href="#services"
+                                href="#barbers"
                                 className="w-full sm:w-auto px-8 py-4 rounded-md border border-hairline-violet text-white font-medium hover:bg-white/5 transition duration-200"
                             >
-                                LIHAT LAYANAN
+                                LIHAT BARBER
                             </a>
                         </div>
                     </div>
                 </section>
 
                 {/* About Section */}
-                <section id="about" className="py-24 border-t border-b border-hairline-violet bg-primary-dark/50">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-                            <div>
-                                <span className="text-xs font-semibold tracking-widest text-accent-lime uppercase block mb-4">Filosofi Kami</span>
-                                <h2 className="font-display font-bold text-3xl md:text-4xl lg:text-5xl leading-tight mb-8">
-                                    Bukan Sekadar Potong Rambut, Ini Adalah Seni & Relaksasi
-                                </h2>
-                                <p className="text-on-dark-muted leading-relaxed mb-6">
-                                    Howell Barbershop hadir dengan dedikasi tinggi untuk menghadirkan pengalaman potong rambut terbaik. Kami menggabungkan keterampilan klasik barbering tradisional dengan gaya modern terkini untuk memberikan hasil presisi yang sesuai karakter Anda.
-                                </p>
-                                <p className="text-on-dark-muted leading-relaxed">
-                                    Dari cuci rambut dengan air hangat hingga pijat relaksasi yang menyegarkan, setiap menit kunjungan Anda dirancang untuk menghadirkan kenyamanan maksimal.
-                                </p>
-                            </div>
-                            <div className="relative">
-                                {/* Decorative frame */}
-                                <div className="absolute -top-4 -left-4 w-full h-full border-2 border-dashed border-hairline-violet rounded-xxl -z-10" />
-                                <div className="aspect-[4/3] rounded-xxl overflow-hidden bg-primary-deeper flex items-center justify-center border border-hairline-violet shadow-2xl">
-                                    <div className="text-center p-8">
-                                        <div className="w-16 h-16 rounded-full bg-accent-lime/10 flex items-center justify-center mx-auto mb-4 border border-accent-lime/30">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-accent-lime" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <path d="M6 3h12" />
-                                                <path d="M12 3v18" />
-                                                <path d="M8 7h8" />
-                                                <path d="M10 12h4" />
-                                                <path d="m8 21 4-4 4 4" />
-                                            </svg>
-                                        </div>
-                                        <h3 className="font-display font-semibold text-xl mb-2 text-white">Higienitas Terjamin</h3>
-                                        <p className="text-sm text-on-dark-muted">Semua alat disterilisasi sebelum dan sesudah penggunaan untuk kenyamanan dan kesehatan Anda.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                <section id="about" className="py-24 border-t border-b border-hairline-violet relative overflow-hidden">
+                    {/* Background Image with Overlay */}
+                    <div className="absolute inset-0 z-0">
+                        <img
+                            src="/images/bg_section_filosofi.jpg"
+                            alt="Filosofi Howell Barbershop"
+                            className="w-full h-full object-cover object-center"
+                        />
+                        <div className="absolute inset-0 bg-[#150B35]/50 backdrop-blur-[2px]" />
                     </div>
-                </section>
 
-                {/* Services Section */}
-                <section id="services" className="py-24">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="text-center mb-16">
-                            <span className="text-xs font-semibold tracking-widest text-accent-lime uppercase block mb-4">Layanan Kami</span>
-                            <h2 className="font-display font-bold text-3xl md:text-5xl mb-6">Menu Grooming Premium</h2>
-                            <p className="max-w-2xl mx-auto text-on-dark-muted">
-                                Pilih layanan berkualitas dari barber ahli kami. Setiap perawatan dirancang dengan standar kualitas tinggi.
-                            </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                            {services.length > 0 ? (
-                                services.map((service) => (
-                                    <div 
-                                        key={service.id} 
-                                        className="rounded-card bg-primary-dark/40 border border-hairline-violet p-6 hover:border-accent-violet hover:-translate-y-1 transition duration-300 flex flex-col justify-between overflow-hidden"
-                                    >
-                                        <div>
-                                            {service.photo_path ? (
-                                                <div className="aspect-[16/10] w-full rounded-lg overflow-hidden bg-primary-deeper border border-hairline-violet mb-4">
-                                                    <img 
-                                                        src={`/storage/${service.photo_path}`} 
-                                                        alt={service.name} 
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <div className="aspect-[16/10] w-full rounded-lg overflow-hidden bg-primary-deeper border border-hairline-violet mb-4 flex items-center justify-center">
-                                                    <span className="text-3xl">✂️</span>
-                                                </div>
-                                            )}
-                                            <div className="flex items-center justify-between mb-4">
-                                                <span className="px-2.5 py-1 rounded bg-primary-deeper border border-hairline-violet text-[10px] uppercase font-bold text-accent-lime tracking-wider">
-                                                    {service.category}
-                                                </span>
-                                                <span className="text-xs text-on-dark-muted flex items-center">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                        <circle cx="12" cy="12" r="10" />
-                                                        <polyline points="12 6 12 12 16 14" />
-                                                    </svg>
-                                                    {service.duration_minutes} Menit
-                                                </span>
-                                            </div>
-                                            <h3 className="font-display font-semibold text-lg text-white mb-2">{service.name}</h3>
-                                            <p className="text-sm text-on-dark-muted mb-6 line-clamp-3 leading-relaxed">{service.description}</p>
-                                        </div>
-                                        <div className="border-t border-hairline-violet/50 pt-4 flex items-center justify-between">
-                                            <span className="text-xs text-on-dark-muted">Mulai dari</span>
-                                            <span className="font-display font-bold text-lg text-accent-lime">
-                                                Rp {new Intl.NumberFormat('id-ID').format(service.default_price)}
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="col-span-full text-center py-8 text-on-dark-muted">
-                                    Belum ada layanan tersedia saat ini.
-                                </div>
-                            )}
-                        </div>
+                    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+                        <span className="text-xs font-semibold tracking-widest text-accent-lime uppercase block mb-4">Filosofi Kami</span>
+                        <h2 className="font-display font-bold text-3xl md:text-5xl leading-tight mb-8">
+                            Bukan Sekadar Potong Rambut, Ini Adalah Seni & Relaksasi
+                        </h2>
+                        <p className="text-on-dark-muted leading-relaxed text-base md:text-lg mb-6">
+                            Howell Barbershop hadir dengan dedikasi tinggi untuk menghadirkan pengalaman potong rambut terbaik. Kami menggabungkan keterampilan klasik barbering tradisional dengan gaya modern terkini untuk memberikan hasil presisi yang sesuai karakter Anda.
+                        </p>
+                        <p className="text-on-dark-muted leading-relaxed text-base md:text-lg">
+                            Dari cuci rambut dengan air hangat hingga pijat relaksasi yang menyegarkan, setiap menit kunjungan Anda dirancang untuk menghadirkan kenyamanan maksimal.
+                        </p>
                     </div>
                 </section>
 
@@ -243,28 +172,33 @@ export default function Welcome({ auth, branches = [], services = [], barbers = 
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-8">
                             {barbers.length > 0 ? (
                                 barbers.map((barber) => (
-                                    <div 
-                                        key={barber.id} 
-                                        className="flex flex-col items-center text-center p-6 rounded-card bg-primary-dark/40 border border-hairline-violet hover:border-accent-violet hover:-translate-y-1 transition duration-300"
+                                    <div
+                                        key={barber.id}
+                                        className="flex flex-col hover:-translate-y-1 transition duration-300 group"
                                     >
-                                        <div className="w-28 h-28 rounded-full overflow-hidden bg-primary-deeper border-2 border-hairline-violet mb-4 shrink-0 flex items-center justify-center">
+                                        <div className="w-full aspect-[4/5] bg-[#1A0F3D] rounded-card flex items-center justify-center shrink-0 overflow-hidden relative mb-4">
                                             {barber.photo_path ? (
-                                                <img 
-                                                    src={`/storage/${barber.photo_path}`} 
-                                                    alt={barber.name} 
+                                                <img
+                                                    src={`/storage/${barber.photo_path}`}
+                                                    alt={barber.name}
                                                     className="w-full h-full object-cover"
                                                 />
                                             ) : (
-                                                <span className="text-3xl font-bold text-accent-lime">{barber.name.substring(0, 1)}</span>
+                                                <div className="w-full h-full flex flex-col items-center justify-center bg-[#1A0F3D]">
+                                                    <span className="text-4xl font-display font-bold text-accent-lime">{barber.name.substring(0, 1)}</span>
+                                                    <span className="text-[10px] text-on-dark-muted mt-2">NO PHOTO</span>
+                                                </div>
                                             )}
                                         </div>
-                                        <h3 className="font-display font-semibold text-lg text-white mb-1">{barber.name}</h3>
-                                        <p className="text-xs text-accent-lime mb-3 font-semibold">
-                                            {barber.commission_percentage >= 45 ? 'Senior Barber' : 'Junior Barber'}
-                                        </p>
-                                        <span className="inline-block px-3 py-1 rounded-full bg-primary-deeper border border-hairline-violet text-[10px] text-on-dark-muted uppercase font-bold tracking-wider">
-                                            📍 {barber.branch_name}
-                                        </span>
+                                        <div className="flex flex-col items-start px-0.5">
+                                            <h3 className="font-display font-semibold text-base md:text-lg text-white mb-1">{barber.name}</h3>
+                                            <p className="text-xs text-on-dark-muted mb-3">
+                                                {barber.commission_percentage >= 45 ? 'Senior Barber' : 'Junior Barber'}
+                                            </p>
+                                            <span className="inline-block px-2.5 py-1 rounded bg-[#1A0F3D] border border-hairline-violet/30 text-[9px] text-accent-lime uppercase font-bold tracking-wider">
+                                                📍 {barber.branch_name}
+                                            </span>
+                                        </div>
                                     </div>
                                 ))
                             ) : (
@@ -290,13 +224,13 @@ export default function Welcome({ auth, branches = [], services = [], barbers = 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
                             {branches.length > 0 ? (
                                 branches.map((branch) => (
-                                    <div 
-                                        key={branch.id} 
+                                    <div
+                                        key={branch.id}
                                         className="rounded-card bg-primary-dark/60 border border-hairline-violet p-8 hover:border-accent-lime/30 transition duration-300 relative overflow-hidden group"
                                     >
                                         <div className="absolute top-0 right-0 w-32 h-32 bg-accent-lime/5 rounded-full blur-2xl group-hover:bg-accent-lime/10 transition duration-300" />
                                         <h3 className="font-display font-bold text-xl text-white mb-4 group-hover:text-accent-lime transition duration-200">{branch.name}</h3>
-                                        
+
                                         <div className="space-y-3 text-sm text-on-dark-muted mb-8">
                                             <div className="flex items-start">
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-accent-lime mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -333,7 +267,7 @@ export default function Welcome({ auth, branches = [], services = [], barbers = 
                 {/* CTA Booking Banner */}
                 <section className="py-24 relative overflow-hidden bg-gradient-to-r from-primary-dark to-primary-deeper">
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
-                    
+
                     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
                         <h2 className="font-display font-bold text-3xl md:text-5xl leading-tight mb-6">
                             Siap Tampil Beda Hari Ini?

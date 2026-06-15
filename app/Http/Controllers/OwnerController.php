@@ -13,7 +13,9 @@ use App\Models\CommissionRecord;
 use App\Models\Transaction;
 use App\Models\TransactionItem;
 use App\Models\Booking;
+use App\Models\ProductStockMutation;
 use Illuminate\Http\Request;
+use App\Services\CommissionService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -27,18 +29,45 @@ class OwnerController extends Controller
     /**
      * Show Owner dashboard analytics.
      */
-    public function dashboard(): Response
+    public function dashboard(Request $request): Response
     {
         $branches = Branch::whereNull('deleted_at')->get();
+        $branchId = $request->input('branch_id');
 
-        // 1. Total Metrics
-        $totalRevenue = (float) Transaction::sum('grand_total');
-        $totalBookingsCompleted = Booking::where('status', 'completed')->count();
-        $totalProductsSold = (int) TransactionItem::where('item_type', 'product')->sum('qty');
-        $totalCommissions = (float) CommissionRecord::sum('commission_amount');
+        // 1. Base Queries for metrics
+        $revenueQuery = Transaction::query();
+        $bookingsQuery = Booking::query();
+        $productsQuery = TransactionItem::where('item_type', 'product');
+        $commissionsQuery = CommissionRecord::query();
+
+        if ($branchId) {
+            $revenueQuery->whereHas('booking', function ($q) use ($branchId) {
+                $q->where('branch_id', $branchId);
+            });
+            $bookingsQuery->where('branch_id', $branchId);
+            $productsQuery->whereHas('transaction.booking', function ($q) use ($branchId) {
+                $q->where('branch_id', $branchId);
+            });
+            $commissionsQuery->whereHas('barber', function ($q) use ($branchId) {
+                $q->where('branch_id', $branchId);
+            });
+        }
+
+        // Calculations
+        $totalRevenue = (float) $revenueQuery->sum('grand_total');
+        $totalServiceRevenue = (float) $revenueQuery->sum('total_service');
+        $totalProductRevenue = (float) $revenueQuery->sum('total_product');
+        $totalBookingsCompleted = $bookingsQuery->where('status', 'completed')->count();
+        $totalProductsSold = (int) $productsQuery->sum('qty');
+        $totalCommissionsPaid = (float) (clone $commissionsQuery)->whereNotNull('payout_id')->sum('commission_amount');
+        $totalCommissionsUnpaid = (float) (clone $commissionsQuery)->whereNull('payout_id')->sum('commission_amount');
 
         // 2. Recent Bookings (latest 5)
-        $recentBookings = Booking::with(['branch', 'service', 'barber.user', 'customer'])
+        $bookingsListQuery = Booking::with(['branch', 'service', 'barber.user', 'customer']);
+        if ($branchId) {
+            $bookingsListQuery->where('branch_id', $branchId);
+        }
+        $recentBookings = $bookingsListQuery
             ->orderBy('created_at', 'desc')
             ->limit(5)
             ->get()
@@ -55,10 +84,13 @@ class OwnerController extends Controller
             });
 
         // 3. Barber Performance
-        $barbersPerformance = Barber::with(['user', 'branch'])
+        $barberQuery = Barber::with(['user', 'branch'])
             ->where('status', 'active')
-            ->whereNull('deleted_at')
-            ->get()
+            ->whereNull('deleted_at');
+        if ($branchId) {
+            $barberQuery->where('branch_id', $branchId);
+        }
+        $barbersPerformance = $barberQuery->get()
             ->map(function ($barber) {
                 $bookingsCount = Booking::where('barber_id', $barber->id)->where('status', 'completed')->count();
                 
@@ -82,26 +114,62 @@ class OwnerController extends Controller
         $chartData = [];
         for ($i = 29; $i >= 0; $i--) {
             $date = Carbon::today()->subDays($i);
-            $revenue = Transaction::whereDate('created_at', $date)->sum('grand_total');
+            $dayRevenueQuery = Transaction::whereDate('created_at', $date);
+            if ($branchId) {
+                $dayRevenueQuery->whereHas('booking', function ($q) use ($branchId) {
+                    $q->where('branch_id', $branchId);
+                });
+            }
+            $revenue = $dayRevenueQuery->sum('grand_total');
             $chartData[] = [
                 'date' => $date->format('d M'),
                 'revenue' => (float) $revenue,
             ];
         }
 
+        // 5. Top Services Booked (limit 3)
+        $topServicesQuery = TransactionItem::where('item_type', 'service');
+        if ($branchId) {
+            $topServicesQuery->whereHas('transaction.booking', function ($q) use ($branchId) {
+                $q->where('branch_id', $branchId);
+            });
+        }
+        $topServices = $topServicesQuery
+            ->select('reference_id', DB::raw('SUM(qty) as total_qty'))
+            ->groupBy('reference_id')
+            ->orderBy('total_qty', 'desc')
+            ->limit(3)
+            ->get()
+            ->map(function ($item) {
+                $service = Service::find($item->reference_id);
+                return [
+                    'name' => $service ? $service->name : 'Layanan',
+                    'category' => $service ? $service->category : '-',
+                    'total_qty' => (int) $item->total_qty,
+                ];
+            });
+
         return Inertia::render('Owner/Dashboard', [
+            'branches' => $branches,
             'branchesCount' => $branches->count(),
             'barbersCount' => Barber::where('status', 'active')->count(),
             'servicesCount' => Service::where('status', 'active')->count(),
             'metrics' => [
                 'revenue' => $totalRevenue,
+                'service_revenue' => $totalServiceRevenue,
+                'product_revenue' => $totalProductRevenue,
                 'bookings_completed' => $totalBookingsCompleted,
                 'products_sold' => $totalProductsSold,
-                'commissions' => $totalCommissions,
+                'commissions' => $totalCommissionsPaid,
+                'commissions_unpaid' => $totalCommissionsUnpaid,
             ],
             'recentBookings' => $recentBookings,
             'barbersPerformance' => $barbersPerformance,
             'chartData' => $chartData,
+            'topServices' => $topServices,
+            'filters' => [
+                'branch_id' => $branchId,
+            ],
         ]);
     }
 
@@ -452,6 +520,109 @@ class OwnerController extends Controller
     }
 
     /**
+     * Restock a product (stok masuk)
+     */
+    public function restockProduct(Request $request, Product $product)
+    {
+        $request->validate([
+            'qty' => 'required|integer|min:1',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request, $product) {
+            $qty = $request->qty;
+            $stockBefore = $product->stock;
+            $product->increment('stock', $qty);
+            $stockAfter = $product->fresh()->stock;
+
+            ProductStockMutation::create([
+                'product_id' => $product->id,
+                'type' => 'in_restock',
+                'reference_id' => null,
+                'qty' => $qty,
+                'stock_before' => $stockBefore,
+                'stock_after' => $stockAfter,
+                'notes' => $request->notes ?? 'Pencatatan stok masuk (Restock)',
+                'created_by' => auth()->id(),
+            ]);
+        });
+
+        return back()->with('success', 'Stok produk berhasil ditambah (Restock).');
+    }
+
+    /**
+     * Adjust stock / Stock Opname
+     */
+    public function adjustProduct(Request $request, Product $product)
+    {
+        $request->validate([
+            'actual_stock' => 'required|integer|min:0',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request, $product) {
+            $actual = $request->actual_stock;
+            $stockBefore = $product->stock;
+            $diff = $actual - $stockBefore;
+
+            if ($diff === 0) {
+                return;
+            }
+
+            $product->stock = $actual;
+            $product->save();
+
+            ProductStockMutation::create([
+                'product_id' => $product->id,
+                'type' => $diff > 0 ? 'in_opname_correction' : 'out_opname_correction',
+                'reference_id' => null,
+                'qty' => abs($diff),
+                'stock_before' => $stockBefore,
+                'stock_after' => $actual,
+                'notes' => $request->notes ?? 'Penyesuaian stok opname',
+                'created_by' => auth()->id(),
+            ]);
+        });
+
+        return back()->with('success', 'Stok produk berhasil disesuaikan (Stock Opname).');
+    }
+
+    /**
+     * Get stock mutations history
+     */
+    public function getProductMutations(Product $product)
+    {
+        $mutations = ProductStockMutation::with('creator')
+            ->where('product_id', $product->id)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($m) {
+                $typeLabel = match ($m->type) {
+                    'in_restock' => 'Stok Masuk (Restock)',
+                    'out_sale' => 'Penjualan (POS)',
+                    'in_opname_correction' => 'Koreksi Opname (+)',
+                    'out_opname_correction' => 'Koreksi Opname (-)',
+                    'out_damaged' => 'Barang Rusak/Hilang',
+                    default => 'Penyesuaian Lainnya',
+                };
+
+                return [
+                    'id' => $m->id,
+                    'type' => $m->type,
+                    'type_label' => $typeLabel,
+                    'qty' => $m->qty,
+                    'stock_before' => $m->stock_before,
+                    'stock_after' => $m->stock_after,
+                    'notes' => $m->notes ?? '-',
+                    'operator' => $m->creator->name ?? 'Sistem',
+                    'date' => $m->created_at->format('d M Y, H:i'),
+                ];
+            });
+
+        return response()->json(['mutations' => $mutations]);
+    }
+
+    /**
      * Schedule & Leaves Setup
      */
     public function listSchedules(): Response
@@ -531,7 +702,10 @@ class OwnerController extends Controller
     /**
      * Commission Report
      */
-    public function reportCommissions(Request $request): Response
+    /**
+     * Commission Report
+     */
+    public function reportCommissions(Request $request, CommissionService $commissionService): Response
     {
         $branches = Branch::whereNull('deleted_at')->get();
         $barbers = Barber::with('user')->where('status', 'active')->whereNull('deleted_at')->get();
@@ -570,6 +744,7 @@ class OwnerController extends Controller
                 'percentage' => (float) $rec->percentage,
                 'commission_amount' => (float) $rec->commission_amount,
                 'date' => $rec->created_at->format('d M Y, H:i'),
+                'is_paid' => !is_null($rec->payout_id),
             ];
         });
 
@@ -577,10 +752,22 @@ class OwnerController extends Controller
         $totalServiceAmount = $records->sum('service_amount');
         $totalCommissionAmount = $records->sum('commission_amount');
 
+        // Fetch unpaid commissions grouped by barber
+        $unpaidGrouped = $commissionService->getUnpaidGrouped()->map(function ($item) {
+            return [
+                'barber_id' => $item->barber_id,
+                'barber_name' => $item->barber->user->name,
+                'branch_name' => $item->barber->branch->name ?? '-',
+                'total_unpaid_commission' => (float) $item->total_unpaid_commission,
+                'total_unpaid_records' => (int) $item->total_unpaid_records,
+            ];
+        });
+
         return Inertia::render('Owner/Commissions', [
             'branches' => $branches,
             'barbers' => $barbers,
             'records' => $records,
+            'unpaidGrouped' => $unpaidGrouped,
             'totals' => [
                 'service_amount' => (float) $totalServiceAmount,
                 'commission_amount' => (float) $totalCommissionAmount,
@@ -592,6 +779,66 @@ class OwnerController extends Controller
                 'end_date' => $endDate,
             ]
         ]);
+    }
+
+    /**
+     * Get unpaid commissions for a specific barber
+     */
+    public function getUnpaidCommissions(Barber $barber, CommissionService $commissionService)
+    {
+        $records = $commissionService->getUnpaidForBarber($barber->id)->map(function ($rec) {
+            return [
+                'id' => $rec->id,
+                'invoice_number' => $rec->transaction->invoice_number,
+                'service_name' => $rec->transaction->booking->service->name ?? 'Layanan',
+                'service_amount' => (float) $rec->service_amount,
+                'commission_amount' => (float) $rec->commission_amount,
+                'date' => $rec->created_at->format('d M Y, H:i'),
+            ];
+        });
+        return response()->json(['records' => $records]);
+    }
+
+    /**
+     * Get payout history for a specific barber
+     */
+    public function getPayouts(Barber $barber, CommissionService $commissionService)
+    {
+        $payouts = $commissionService->getPayoutsForBarber($barber->id)->map(function ($p) {
+            return [
+                'id' => $p->id,
+                'payout_amount' => (float) $p->payout_amount,
+                'payment_method' => $p->payment_method === 'cash' ? 'Tunai' : 'Transfer Bank',
+                'reference_number' => $p->reference_number ?? '-',
+                'notes' => $p->notes ?? '-',
+                'paid_by_name' => $p->paidBy->name,
+                'paid_at' => $p->paid_at->format('d M Y, H:i'),
+            ];
+        });
+        return response()->json(['payouts' => $payouts]);
+    }
+
+    /**
+     * Store payout transaction
+     */
+    public function storePayout(Request $request, Barber $barber, CommissionService $commissionService)
+    {
+        $request->validate([
+            'record_ids' => 'required|array',
+            'record_ids.*' => 'integer',
+            'payment_method' => 'required|string|in:cash,bank_transfer',
+            'reference_number' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $commissionService->processPayout($barber->id, $request->record_ids, $request->only([
+                'payment_method', 'reference_number', 'notes'
+            ]));
+            return redirect()->back()->with('success', 'Pembayaran komisi berhasil diproses!');
+        } catch (\Exception $e) {
+            return redirect()->back()->withErrors(['error' => $e->getMessage()]);
+        }
     }
 
     /**

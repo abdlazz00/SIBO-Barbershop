@@ -15,6 +15,8 @@ export default function Wizard({ branches = [], services = [], auth }) {
     // API Data
     const [barbers, setBarbers] = useState([]);
     const [loadingBarbers, setLoadingBarbers] = useState(false);
+    const [servicesList, setServicesList] = useState([]);
+    const [loadingServices, setLoadingServices] = useState(false);
     const [slots, setSlots] = useState([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
 
@@ -46,16 +48,17 @@ export default function Wizard({ branches = [], services = [], auth }) {
         }
     }, [branches]);
 
-    // 2. Fetch Barbers when branch and service are selected
+    // 2. Fetch Barbers when branch is selected
     useEffect(() => {
-        if (selectedBranch && selectedService) {
+        if (selectedBranch) {
             setLoadingBarbers(true);
             setBarbers([]);
             setSelectedBarber(null);
+            setSelectedService(null);
+            setServicesList([]);
             
             axios.post(route('booking.barbers'), {
-                branch_id: selectedBranch.id,
-                service_id: selectedService.id
+                branch_id: selectedBranch.id
             })
             .then(response => {
                 setBarbers(response.data.barbers || []);
@@ -67,7 +70,29 @@ export default function Wizard({ branches = [], services = [], auth }) {
                 setLoadingBarbers(false);
             });
         }
-    }, [selectedBranch, selectedService]);
+    }, [selectedBranch]);
+
+    // 2b. Fetch Services when barber is selected
+    useEffect(() => {
+        if (selectedBarber) {
+            setLoadingServices(true);
+            setServicesList([]);
+            setSelectedService(null);
+            
+            axios.post(route('booking.services'), {
+                barber_id: selectedBarber.id
+            })
+            .then(response => {
+                setServicesList(response.data.services || []);
+            })
+            .catch(err => {
+                console.error(err);
+            })
+            .finally(() => {
+                setLoadingServices(false);
+            });
+        }
+    }, [selectedBarber]);
 
     // 3. Fetch Slots when barber and date are selected
     useEffect(() => {
@@ -138,12 +163,12 @@ export default function Wizard({ branches = [], services = [], auth }) {
             setError('branch_id', 'Silahkan pilih cabang terlebih dahulu.');
             return;
         }
-        if (step === 2 && !selectedService) {
-            setError('service_id', 'Silahkan pilih layanan terlebih dahulu.');
+        if (step === 2 && !selectedBarber) {
+            setError('barber_id', 'Silahkan pilih barber terlebih dahulu.');
             return;
         }
-        if (step === 3 && !selectedBarber) {
-            setError('barber_id', 'Silahkan pilih barber terlebih dahulu.');
+        if (step === 3 && !selectedService) {
+            setError('service_id', 'Silahkan pilih layanan terlebih dahulu.');
             return;
         }
         if (step === 4 && (!selectedDate || !selectedTime)) {
@@ -264,8 +289,8 @@ export default function Wizard({ branches = [], services = [], auth }) {
                         <span>Langkah {step} dari 5</span>
                         <span>
                             {step === 1 && "PILIH CABANG"}
-                            {step === 2 && "PILIH LAYANAN"}
-                            {step === 3 && "PILIH BARBER"}
+                            {step === 2 && "PILIH BARBER"}
+                            {step === 3 && "PILIH LAYANAN"}
                             {step === 4 && "PILIH JADWAL"}
                             {step === 5 && "KONFIRMASI DATA"}
                         </span>
@@ -324,86 +349,12 @@ export default function Wizard({ branches = [], services = [], auth }) {
                         </div>
                     )}
 
-                    {/* Step 2: Service Selector */}
+                    {/* Step 2: Barber Selector */}
                     {step === 2 && (
                         <div className="space-y-6">
                             <div className="text-center md:text-left">
-                                <h2 className="font-display font-semibold text-2xl md:text-3xl text-white mb-2">Pilih Layanan Grooming</h2>
-                                <p className="text-sm text-on-dark-muted">Satu booking hanya berlaku untuk satu jenis layanan saja.</p>
-                            </div>
-
-                            {errors.service_id && (
-                                <div className="p-3 bg-status-danger/10 border border-status-danger/30 rounded text-status-danger text-sm">
-                                    {errors.service_id}
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {services.map((service) => {
-                                    const isSelected = selectedService?.id === service.id;
-                                    return (
-                                        <div
-                                            key={service.id}
-                                            onClick={() => {
-                                                setSelectedService(service);
-                                                clearErrors('service_id');
-                                            }}
-                                            className={`rounded-card p-5 border cursor-pointer transition duration-200 flex flex-col sm:flex-row gap-4 relative overflow-hidden ${
-                                                isSelected 
-                                                ? 'bg-primary border-accent-lime shadow-lg shadow-accent-lime/10' 
-                                                : 'bg-primary-dark/40 border-hairline-violet hover:border-accent-violet'
-                                            }`}
-                                        >
-                                            {isSelected && (
-                                                <div className="absolute top-0 right-0 bg-accent-lime text-ink-deep text-[10px] font-bold px-3 py-1 rounded-bl z-10">
-                                                    TERPILIH
-                                                </div>
-                                            )}
-                                            {/* Service Image */}
-                                            <div className="w-full sm:w-28 h-28 rounded-lg overflow-hidden bg-primary-deeper border border-hairline-violet shrink-0 flex items-center justify-center">
-                                                {service.photo_path ? (
-                                                    <img 
-                                                        src={`/storage/${service.photo_path}`} 
-                                                        alt={service.name} 
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                ) : (
-                                                    <span className="text-3xl">✂️</span>
-                                                )}
-                                            </div>
-                                            <div className="flex-1 flex flex-col justify-between">
-                                                <div>
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className="px-2 py-0.5 rounded bg-primary-deeper border border-hairline-violet text-[9px] uppercase font-bold text-accent-lime tracking-wider">
-                                                            {service.category}
-                                                        </span>
-                                                        <span className="text-xs text-on-dark-muted flex items-center">
-                                                            ⏱ {service.duration_minutes} Min
-                                                        </span>
-                                                    </div>
-                                                    <h3 className="font-display font-semibold text-base text-white mb-1">{service.name}</h3>
-                                                    <p className="text-xs text-on-dark-muted line-clamp-2 leading-relaxed mb-2">{service.description}</p>
-                                                </div>
-                                                <div className="border-t border-hairline-violet/30 pt-2 flex items-center justify-between text-xs">
-                                                    <span className="text-on-dark-muted">Mulai dari</span>
-                                                    <span className="font-display font-bold text-sm text-accent-lime">
-                                                        Rp {new Intl.NumberFormat('id-ID').format(service.default_price)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Step 3: Barber Selector */}
-                    {step === 3 && (
-                        <div className="space-y-6">
-                            <div className="text-center md:text-left">
                                 <h2 className="font-display font-semibold text-2xl md:text-3xl text-white mb-2">Pilih Barber Terfavorit</h2>
-                                <p className="text-sm text-on-dark-muted">Keahlian barber dapat memengaruhi harga layanan (override pricing).</p>
+                                <p className="text-sm text-on-dark-muted">Silahkan pilih barber yang siap merapikan gaya rambut Anda.</p>
                             </div>
 
                             {errors.barber_id && (
@@ -418,7 +369,7 @@ export default function Wizard({ branches = [], services = [], auth }) {
                                     <p className="text-sm text-on-dark-muted">Mencari barber yang tersedia...</p>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
                                     {barbers.length > 0 ? (
                                         barbers.map((barber) => {
                                             const isSelected = selectedBarber?.id === barber.id;
@@ -429,19 +380,19 @@ export default function Wizard({ branches = [], services = [], auth }) {
                                                         setSelectedBarber(barber);
                                                         clearErrors('barber_id');
                                                     }}
-                                                    className={`rounded-card p-6 border cursor-pointer transition duration-200 flex items-center space-x-4 relative overflow-hidden ${
-                                                        isSelected 
-                                                        ? 'bg-primary border-accent-lime shadow-lg shadow-accent-lime/10' 
-                                                        : 'bg-primary-dark/40 border-hairline-violet hover:border-accent-violet'
-                                                    }`}
+                                                    className="cursor-pointer transition duration-200 flex flex-col relative group"
                                                 >
-                                                    {isSelected && (
-                                                        <div className="absolute top-0 right-0 bg-accent-lime text-ink-deep text-[10px] font-bold px-3 py-1 rounded-bl">
-                                                            TERPILIH
-                                                        </div>
-                                                    )}
-                                                    {/* Avatar */}
-                                                    <div className="w-16 h-16 rounded-full overflow-hidden bg-primary-deeper border border-hairline-violet shrink-0 flex items-center justify-center">
+                                                    {/* Photo container */}
+                                                    <div className={`w-full aspect-[4/5] bg-[#1A0F3D] rounded-card flex items-center justify-center shrink-0 overflow-hidden relative mb-3 transition duration-200 ${
+                                                        isSelected 
+                                                        ? 'ring-2 ring-accent-lime shadow-lg shadow-accent-lime/20' 
+                                                        : 'ring-1 ring-hairline-violet/30 group-hover:ring-accent-violet'
+                                                    }`}>
+                                                        {isSelected && (
+                                                            <div className="absolute top-2 right-2 bg-accent-lime text-ink-deep text-[9px] font-bold px-2 py-0.5 rounded shadow-sm z-10">
+                                                                TERPILIH
+                                                            </div>
+                                                        )}
                                                         {barber.photo_path ? (
                                                             <img 
                                                                 src={`/storage/${barber.photo_path}`} 
@@ -450,26 +401,107 @@ export default function Wizard({ branches = [], services = [], auth }) {
                                                                 onError={(e) => { e.target.src = ''; }}
                                                             />
                                                         ) : (
-                                                            <span className="text-xl font-bold text-accent-lime">{barber.name.substring(0, 1)}</span>
+                                                            <div className="w-full h-full flex flex-col items-center justify-center bg-[#1A0F3D]">
+                                                                <span className="text-3xl font-display font-bold text-accent-lime">{barber.name.substring(0, 1)}</span>
+                                                                <span className="text-[9px] text-on-dark-muted mt-1.5">NO PHOTO</span>
+                                                            </div>
                                                         )}
                                                     </div>
-                                                    <div>
-                                                        <h3 className="font-display font-semibold text-base text-white">{barber.name}</h3>
-                                                        <p className="text-xs text-on-dark-muted mb-2">
+                                                    <div className="flex flex-col items-start px-0.5">
+                                                        <h3 className="font-display font-semibold text-sm md:text-base text-white mb-0.5 line-clamp-1">{barber.name}</h3>
+                                                        <p className="text-xs text-on-dark-muted">
                                                             {barber.commission_percentage >= 45 ? 'Senior Barber' : 'Junior Barber'}
                                                         </p>
-                                                        <div className="flex items-center text-sm font-bold text-accent-lime">
-                                                            Rp {new Intl.NumberFormat('id-ID').format(barber.price)}
-                                                        </div>
                                                     </div>
                                                 </div>
                                             );
                                         })
                                     ) : (
-                                        <div className="col-span-2 text-center py-12 text-on-dark-muted">
+                                        <div className="col-span-full text-center py-12 text-on-dark-muted">
                                             Maaf, tidak ada barber aktif di cabang ini.
                                         </div>
                                     )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Step 3: Service Selector */}
+                    {step === 3 && (
+                        <div className="space-y-6">
+                            <div className="text-center md:text-left">
+                                <h2 className="font-display font-semibold text-2xl md:text-3xl text-white mb-2">Pilih Layanan Grooming</h2>
+                                <p className="text-sm text-on-dark-muted">Harga yang tertera merupakan harga final untuk barber <strong>{selectedBarber?.name}</strong>.</p>
+                            </div>
+
+                            {errors.service_id && (
+                                <div className="p-3 bg-status-danger/10 border border-status-danger/30 rounded text-status-danger text-sm">
+                                    {errors.service_id}
+                                </div>
+                            )}
+
+                            {loadingServices ? (
+                                <div className="text-center py-12">
+                                    <div className="w-8 h-8 border-4 border-accent-lime border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                                    <p className="text-sm text-on-dark-muted">Mengambil daftar layanan dan penyesuaian tarif...</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {servicesList.map((service) => {
+                                        const isSelected = selectedService?.id === service.id;
+                                        return (
+                                            <div
+                                                key={service.id}
+                                                onClick={() => {
+                                                    setSelectedService(service);
+                                                    clearErrors('service_id');
+                                                }}
+                                                className={`rounded-card p-5 border cursor-pointer transition duration-200 flex flex-col sm:flex-row gap-4 relative overflow-hidden ${
+                                                    isSelected 
+                                                    ? 'bg-primary border-accent-lime shadow-lg shadow-accent-lime/10' 
+                                                    : 'bg-primary-dark/40 border-hairline-violet hover:border-accent-violet'
+                                                }`}
+                                            >
+                                                {isSelected && (
+                                                    <div className="absolute top-0 right-0 bg-accent-lime text-ink-deep text-[10px] font-bold px-3 py-1 rounded-bl z-10">
+                                                        TERPILIH
+                                                    </div>
+                                                )}
+                                                {/* Service Image */}
+                                                <div className="w-full sm:w-28 h-28 rounded-lg overflow-hidden bg-primary-deeper border border-hairline-violet shrink-0 flex items-center justify-center">
+                                                    {service.photo_path ? (
+                                                        <img 
+                                                            src={`/storage/${service.photo_path}`} 
+                                                            alt={service.name} 
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <span className="text-3xl">✂️</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 flex flex-col justify-between">
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="px-2 py-0.5 rounded bg-primary-deeper border border-hairline-violet text-[9px] uppercase font-bold text-accent-lime tracking-wider">
+                                                                {service.category}
+                                                            </span>
+                                                            <span className="text-xs text-on-dark-muted flex items-center">
+                                                                ⏱ {service.duration_minutes} Min
+                                                            </span>
+                                                        </div>
+                                                        <h3 className="font-display font-semibold text-base text-white mb-1">{service.name}</h3>
+                                                        <p className="text-xs text-on-dark-muted line-clamp-2 leading-relaxed mb-2">{service.description}</p>
+                                                    </div>
+                                                    <div className="border-t border-hairline-violet/30 pt-2 flex items-center justify-between text-xs">
+                                                        <span className="text-on-dark-muted">Harga Layanan (Final)</span>
+                                                        <span className="font-display font-bold text-sm text-accent-lime">
+                                                            Rp {new Intl.NumberFormat('id-ID').format(service.price)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -602,7 +634,7 @@ export default function Wizard({ branches = [], services = [], auth }) {
                                 <div className="border-t border-hairline-violet/30 pt-4 flex justify-between items-center bg-primary-deeper/30 -mx-6 -mb-6 p-6 rounded-b-card">
                                     <span className="text-sm font-semibold text-on-dark-muted">Total Pembayaran (Bayar di Tempat)</span>
                                     <span className="font-display font-bold text-2xl text-accent-lime">
-                                        Rp {new Intl.NumberFormat('id-ID').format(selectedBarber?.price)}
+                                        Rp {new Intl.NumberFormat('id-ID').format(selectedService?.price)}
                                     </span>
                                 </div>
                             </div>

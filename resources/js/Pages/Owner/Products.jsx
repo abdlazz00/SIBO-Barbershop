@@ -1,10 +1,12 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
+import axios from 'axios';
 
 export default function Products({ products = [], branches = [] }) {
     const [showModal, setShowModal] = useState(false);
     const [editingProduct, setEditingProduct] = useState(null);
+    const [activeDropdownId, setActiveDropdownId] = useState(null);
 
     // Form states
     const [branchId, setBranchId] = useState('');
@@ -15,6 +17,24 @@ export default function Products({ products = [], branches = [] }) {
     const [status, setStatus] = useState('active');
     const [photo, setPhoto] = useState(null);
     const [errors, setErrors] = useState({});
+
+    // Restock Modal states
+    const [showRestockModal, setShowRestockModal] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [restockQty, setRestockQty] = useState(5);
+    const [restockNotes, setRestockNotes] = useState('');
+    const [processingRestock, setProcessingRestock] = useState(false);
+
+    // Opname Modal states
+    const [showOpnameModal, setShowOpnameModal] = useState(false);
+    const [opnameActual, setOpnameActual] = useState(0);
+    const [opnameNotes, setOpnameNotes] = useState('');
+    const [processingOpname, setProcessingOpname] = useState(false);
+
+    // Mutations Modal states
+    const [showMutationsModal, setShowMutationsModal] = useState(false);
+    const [mutationsList, setMutationsList] = useState([]);
+    const [loadingMutations, setLoadingMutations] = useState(false);
 
     const openCreateModal = () => {
         setEditingProduct(null);
@@ -40,6 +60,39 @@ export default function Products({ products = [], branches = [] }) {
         setPhoto(null);
         setErrors({});
         setShowModal(true);
+    };
+
+    const openRestockModal = (p) => {
+        setSelectedProduct(p);
+        setRestockQty(5);
+        setRestockNotes('');
+        setShowRestockModal(true);
+    };
+
+    const openOpnameModal = (p) => {
+        setSelectedProduct(p);
+        setOpnameActual(p.stock);
+        setOpnameNotes('');
+        setShowOpnameModal(true);
+    };
+
+    const openMutationsModal = (p) => {
+        setSelectedProduct(p);
+        setShowMutationsModal(true);
+        setLoadingMutations(true);
+        setMutationsList([]);
+
+        axios.get(route('owner.products.mutations', p.id))
+            .then(res => {
+                setMutationsList(res.data.mutations || []);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Gagal mengambil data riwayat mutasi.');
+            })
+            .finally(() => {
+                setLoadingMutations(false);
+            });
     };
 
     const handleSubmit = (e) => {
@@ -73,6 +126,40 @@ export default function Products({ products = [], branches = [] }) {
                 onError: (errs) => setErrors(errs)
             });
         }
+    };
+
+    const handleRestockSubmit = (e) => {
+        e.preventDefault();
+        setProcessingRestock(true);
+        router.post(route('owner.products.restock', selectedProduct.id), {
+            qty: restockQty,
+            notes: restockNotes
+        }, {
+            onSuccess: () => {
+                setShowRestockModal(false);
+                setProcessingRestock(false);
+            },
+            onError: () => {
+                setProcessingRestock(false);
+            }
+        });
+    };
+
+    const handleOpnameSubmit = (e) => {
+        e.preventDefault();
+        setProcessingOpname(true);
+        router.post(route('owner.products.adjust', selectedProduct.id), {
+            actual_stock: opnameActual,
+            notes: opnameNotes
+        }, {
+            onSuccess: () => {
+                setShowOpnameModal(false);
+                setProcessingOpname(false);
+            },
+            onError: () => {
+                setProcessingOpname(false);
+            }
+        });
     };
 
     const handleDelete = (id) => {
@@ -145,30 +232,78 @@ export default function Products({ products = [], branches = [] }) {
                                                     Rp {new Intl.NumberFormat('id-ID').format(p.price)}
                                                 </td>
                                                 <td className="py-4 px-6">
-                                                    <span className={`font-bold ${p.stock <= 5 ? 'text-status-danger' : 'text-ink'}`}>
+                                                    <span className={`font-bold ${p.stock <= 5 ? 'text-booking-cancelled' : 'text-ink'}`}>
                                                         {p.stock} pcs
                                                     </span>
                                                 </td>
                                                 <td className="py-4 px-6 text-center">
                                                     <span className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                        p.status === 'active' ? 'bg-green-100 text-status-success' : 'bg-red-100 text-status-danger'
+                                                        p.status === 'active' ? 'bg-green-50 border border-green-200 text-booking-completed' : 'bg-red-50 border border-red-200 text-booking-cancelled'
                                                     }`}>
                                                         {p.status}
                                                     </span>
                                                 </td>
-                                                <td className="py-4 px-6 text-right space-x-2">
-                                                    <button
-                                                        onClick={() => openEditModal(p)}
-                                                        className="px-3 py-1.5 rounded border border-hairline-cool text-accent-violet text-xs font-semibold hover:bg-surface-card transition"
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(p.id)}
-                                                        className="px-3 py-1.5 rounded border border-status-danger text-status-danger text-xs font-medium hover:bg-red-50 transition"
-                                                    >
-                                                        Hapus
-                                                    </button>
+                                                <td className="py-4 px-6 text-right relative">
+                                                    <div className="inline-block text-left">
+                                                        <button 
+                                                            onClick={() => setActiveDropdownId(activeDropdownId === p.id ? null : p.id)}
+                                                            className="px-3 py-1.5 rounded bg-surface-card border border-hairline-cool text-ink hover:bg-surface-press-light transition text-xs font-bold flex items-center space-x-1 ml-auto"
+                                                        >
+                                                            <span>Pilihan</span>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3 opacity-70">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                                            </svg>
+                                                        </button>
+                                                        {activeDropdownId === p.id && (
+                                                            <>
+                                                                <div 
+                                                                    className="fixed inset-0 z-10" 
+                                                                    onClick={() => setActiveDropdownId(null)}
+                                                                />
+                                                                <div className="absolute right-0 mt-1 w-40 rounded-md shadow-lg bg-white border border-hairline-cloud z-20 py-1 divide-y divide-hairline-cloud/50 text-xs text-left animate-in fade-in slide-in-from-top-1 duration-100">
+                                                                    <div className="py-1">
+                                                                        <button
+                                                                            onClick={() => { openRestockModal(p); setActiveDropdownId(null); }}
+                                                                            className="w-full text-left px-4 py-2 hover:bg-green-50 text-booking-completed font-semibold flex items-center gap-2"
+                                                                        >
+                                                                            <span>➕</span>
+                                                                            <span>Stok Masuk</span>
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { openOpnameModal(p); setActiveDropdownId(null); }}
+                                                                            className="w-full text-left px-4 py-2 hover:bg-amber-50 text-booking-in-progress font-semibold flex items-center gap-2"
+                                                                        >
+                                                                            <span>⚙️</span>
+                                                                            <span>Stok Opname</span>
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { openMutationsModal(p); setActiveDropdownId(null); }}
+                                                                            className="w-full text-left px-4 py-2 hover:bg-blue-50 text-booking-confirmed font-semibold flex items-center gap-2"
+                                                                        >
+                                                                            <span>📜</span>
+                                                                            <span>Log Mutasi</span>
+                                                                        </button>
+                                                                    </div>
+                                                                    <div className="py-1">
+                                                                        <button
+                                                                            onClick={() => { openEditModal(p); setActiveDropdownId(null); }}
+                                                                            className="w-full text-left px-4 py-2 hover:bg-surface-card text-accent-violet-deep font-semibold flex items-center gap-2"
+                                                                        >
+                                                                            <span>✏️</span>
+                                                                            <span>Edit Produk</span>
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { handleDelete(p.id); setActiveDropdownId(null); }}
+                                                                            className="w-full text-left px-4 py-2 hover:bg-red-50 text-status-danger font-semibold flex items-center gap-2"
+                                                                        >
+                                                                            <span>❌</span>
+                                                                            <span>Hapus Produk</span>
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
@@ -297,6 +432,7 @@ export default function Products({ products = [], branches = [] }) {
                                         className="input-field w-full text-sm"
                                         min="0"
                                         required
+                                        disabled={!!editingProduct}
                                     />
                                     {errors.stock && <p className="text-xs text-status-danger mt-1">{errors.stock}</p>}
                                 </div>
@@ -334,6 +470,191 @@ export default function Products({ products = [], branches = [] }) {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Restock (Stok Masuk) Modal */}
+            {showRestockModal && selectedProduct && (
+                <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-sm rounded-xl shadow-modal border border-hairline-cloud overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-hairline-cloud bg-surface-card flex justify-between items-center text-ink">
+                            <div>
+                                <h3 className="font-display font-bold text-base text-ink-deep">Stok Masuk (Restock)</h3>
+                                <p className="text-[10px] text-on-light-muted mt-0.5">{selectedProduct.name}</p>
+                            </div>
+                            <button onClick={() => setShowRestockModal(false)} className="text-on-light-muted hover:text-ink font-bold text-lg">&times;</button>
+                        </div>
+                        <form onSubmit={handleRestockSubmit} className="p-5 space-y-4 text-xs text-ink">
+                            <div>
+                                <label className="block font-bold text-on-light-muted uppercase tracking-wider mb-2">Jumlah Stok Masuk</label>
+                                <input 
+                                    type="number"
+                                    min="1"
+                                    value={restockQty}
+                                    onChange={(e) => setRestockQty(parseInt(e.target.value) || 1)}
+                                    className="input-field w-full text-xs"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block font-bold text-on-light-muted uppercase tracking-wider mb-2">Catatan (Opsional)</label>
+                                <textarea 
+                                    rows="2"
+                                    value={restockNotes}
+                                    onChange={(e) => setRestockNotes(e.target.value)}
+                                    placeholder="Contoh: Pengiriman supplier, Restock bulanan"
+                                    className="input-field w-full text-xs"
+                                />
+                            </div>
+                            <div className="border-t border-hairline-cloud pt-4 flex justify-end space-x-2">
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowRestockModal(false)}
+                                    className="px-4 py-2 border border-hairline-cool rounded text-on-light-muted hover:bg-surface-card text-xs font-semibold"
+                                >
+                                    Batal
+                                </button>
+                                <button 
+                                    type="submit"
+                                    disabled={processingRestock}
+                                    className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition text-xs font-bold disabled:opacity-55"
+                                >
+                                    {processingRestock ? 'Memproses...' : 'Tambah Stok'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Opname (Adjustment) Modal */}
+            {showOpnameModal && selectedProduct && (
+                <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-sm rounded-xl shadow-modal border border-hairline-cloud overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-hairline-cloud bg-surface-card flex justify-between items-center text-ink">
+                            <div>
+                                <h3 className="font-display font-bold text-base text-ink-deep">Koreksi Stok Opname</h3>
+                                <p className="text-[10px] text-on-light-muted mt-0.5">{selectedProduct.name}</p>
+                            </div>
+                            <button onClick={() => setShowOpnameModal(false)} className="text-on-light-muted hover:text-ink font-bold text-lg">&times;</button>
+                        </div>
+                        <form onSubmit={handleOpnameSubmit} className="p-5 space-y-4 text-xs text-ink">
+                            <div className="bg-surface-card p-3 rounded border border-hairline-cloud mb-2 flex justify-between items-center text-[11px]">
+                                <span className="text-on-light-muted font-medium">Stok Sistem Saat Ini:</span>
+                                <span className="font-bold text-ink-deep">{selectedProduct.stock} pcs</span>
+                            </div>
+                            <div>
+                                <label className="block font-bold text-on-light-muted uppercase tracking-wider mb-2">Stok Fisik Sebenarnya</label>
+                                <input 
+                                    type="number"
+                                    min="0"
+                                    value={opnameActual}
+                                    onChange={(e) => setOpnameActual(parseInt(e.target.value) || 0)}
+                                    className="input-field w-full text-xs"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block font-bold text-on-light-muted uppercase tracking-wider mb-2">Alasan Koreksi / Catatan</label>
+                                <textarea 
+                                    rows="2"
+                                    value={opnameNotes}
+                                    onChange={(e) => setOpnameNotes(e.target.value)}
+                                    placeholder="Contoh: Selisih stock opname bulanan, Pecah di display"
+                                    className="input-field w-full text-xs"
+                                    required
+                                />
+                            </div>
+                            <div className="border-t border-hairline-cloud pt-4 flex justify-end space-x-2">
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowOpnameModal(false)}
+                                    className="px-4 py-2 border border-hairline-cool rounded text-on-light-muted hover:bg-surface-card text-xs font-semibold"
+                                >
+                                    Batal
+                                </button>
+                                <button 
+                                    type="submit"
+                                    disabled={processingOpname}
+                                    className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition text-xs font-bold disabled:opacity-55"
+                                >
+                                    {processingOpname ? 'Memproses...' : 'Simpan Penyesuaian'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Mutations History (Log) Modal */}
+            {showMutationsModal && selectedProduct && (
+                <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-2xl rounded-xl shadow-modal border border-hairline-cloud overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-ink">
+                        <div className="p-5 border-b border-hairline-cloud bg-surface-card flex justify-between items-center">
+                            <div>
+                                <h3 className="font-display font-bold text-base text-ink-deep">Histori Mutasi Stok</h3>
+                                <p className="text-[10px] text-on-light-muted mt-0.5">{selectedProduct.name}</p>
+                            </div>
+                            <button onClick={() => setShowMutationsModal(false)} className="text-on-light-muted hover:text-ink font-bold text-lg">&times;</button>
+                        </div>
+                        <div className="p-5 max-h-[60vh] overflow-y-auto">
+                            {loadingMutations ? (
+                                <div className="text-center py-8">
+                                    <div className="w-6 h-6 border-2 border-accent-violet border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                                    <p className="text-xs text-on-light-muted">Mengambil riwayat mutasi...</p>
+                                </div>
+                            ) : mutationsList.length > 0 ? (
+                                <div className="overflow-x-auto border border-hairline-cloud rounded-card">
+                                    <table className="w-full text-left border-collapse text-[10px] font-sans">
+                                        <thead>
+                                            <tr className="bg-surface-card border-b border-hairline-cloud font-bold text-on-light-muted uppercase tracking-wider text-left">
+                                                <th className="py-2.5 px-3">Tanggal</th>
+                                                <th className="py-2.5 px-3">Tipe Aktivitas</th>
+                                                <th className="py-2.5 px-3 text-center">Jumlah</th>
+                                                <th className="py-2.5 px-3 text-center">Sebelum → Sesudah</th>
+                                                <th className="py-2.5 px-3">Catatan</th>
+                                                <th className="py-2.5 px-3">Operator</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-hairline-cloud text-ink-deep">
+                                            {mutationsList.map((m) => (
+                                                <tr key={m.id} className="hover:bg-surface-card/40 transition">
+                                                    <td className="py-2.5 px-3 text-on-light-muted font-mono">{m.date}</td>
+                                                    <td className="py-2.5 px-3">
+                                                        <span className={`inline-block px-1.5 py-0.5 rounded-[3px] text-[8px] font-bold uppercase ${
+                                                            m.type.startsWith('in_') ? 'bg-green-50 text-booking-completed border border-green-200/50' : 'bg-red-50 text-booking-cancelled border border-red-200/50'
+                                                        }`}>
+                                                            {m.type_label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-center font-bold">
+                                                        {m.type.startsWith('in_') ? `+${m.qty}` : `-${m.qty}`}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-center font-mono font-medium text-on-light-muted">
+                                                        {m.stock_before} → <span className="font-bold text-ink-deep">{m.stock_after}</span>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 max-w-[150px] truncate" title={m.notes}>{m.notes}</td>
+                                                    <td className="py-2.5 px-3 text-on-light-muted font-medium">{m.operator}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-on-light-muted italic text-center py-6">
+                                    Belum ada catatan mutasi stok untuk produk ini.
+                                </p>
+                            )}
+                        </div>
+                        <div className="p-4 border-t border-hairline-cloud bg-surface-card flex justify-end">
+                            <button 
+                                onClick={() => setShowMutationsModal(false)} 
+                                className="px-5 py-1.5 bg-ink-deep text-white rounded font-sans font-bold text-xs hover:bg-ink-press transition"
+                            >
+                                Tutup
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

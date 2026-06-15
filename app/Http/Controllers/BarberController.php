@@ -2,9 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Booking;
-use App\Models\CommissionRecord;
-use App\Models\WeeklySchedule;
+use App\Repositories\Interfaces\BarberRepositoryInterface;
+use App\Repositories\Interfaces\ScheduleRepositoryInterface;
+use App\Repositories\Interfaces\BookingRepositoryInterface;
+use App\Repositories\Interfaces\CommissionRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
@@ -13,6 +14,23 @@ use Inertia\Response;
 
 class BarberController extends Controller
 {
+    protected $barberRepo;
+    protected $scheduleRepo;
+    protected $bookingRepo;
+    protected $commissionRepo;
+
+    public function __construct(
+        BarberRepositoryInterface $barberRepo,
+        ScheduleRepositoryInterface $scheduleRepo,
+        BookingRepositoryInterface $bookingRepo,
+        CommissionRepositoryInterface $commissionRepo
+    ) {
+        $this->barberRepo = $barberRepo;
+        $this->scheduleRepo = $scheduleRepo;
+        $this->bookingRepo = $bookingRepo;
+        $this->commissionRepo = $commissionRepo;
+    }
+
     /**
      * Show Barber dashboard (schedule & today's bookings).
      */
@@ -25,47 +43,47 @@ class BarberController extends Controller
             abort(403, 'Akses ditolak. Pengguna bukan barber aktif.');
         }
 
-        // Today's Date Info
         $todayStr = Carbon::today()->format('Y-m-d');
         $dayOfWeek = Carbon::today()->dayOfWeek;
 
         // 1. Get shift schedule for today
-        $shift = WeeklySchedule::where('barber_id', $barber->id)
-            ->where('day_of_week', $dayOfWeek)
-            ->first();
+        $shift = $this->scheduleRepo->getWeeklyScheduleForBarber($barber->id, $dayOfWeek);
 
         // 2. Get today's bookings for this barber
-        $bookings = Booking::with(['service', 'customer'])
-            ->where('barber_id', $barber->id)
-            ->whereDate('slot_start', $todayStr)
-            ->whereIn('status', ['confirmed', 'in_progress', 'completed'])
-            ->orderBy('slot_start', 'asc')
-            ->get()
-            ->map(function ($booking) {
-                return [
-                    'id' => $booking->id,
-                    'customer_name' => $booking->customer ? $booking->customer->name : $booking->guest_name,
-                    'customer_phone' => $booking->customer ? $booking->customer->phone : $booking->guest_phone,
-                    'service_name' => $booking->service->name,
-                    'duration' => $booking->service->duration_minutes,
-                    'slot_start' => $booking->slot_start->format('H:i'),
-                    'slot_end' => $booking->slot_end->format('H:i'),
-                    'status' => $booking->status,
-                ];
-            });
+        $bookings = $this->bookingRepo->getFilteredBookings([
+            'barber_id' => $barber->id,
+            'date' => $todayStr,
+        ])->filter(function ($b) {
+            return in_array($b->status, ['confirmed', 'in_progress', 'completed']);
+        })->map(function ($booking) {
+            return [
+                'id' => $booking->id,
+                'customer_name' => $booking->customer ? $booking->customer->name : $booking->guest_name,
+                'customer_phone' => $booking->customer ? $booking->customer->phone : $booking->guest_phone,
+                'service_name' => $booking->service->name,
+                'duration' => $booking->service->duration_minutes,
+                'slot_start' => $booking->slot_start->format('H:i'),
+                'slot_end' => $booking->slot_end->format('H:i'),
+                'status' => $booking->status,
+            ];
+        })->values();
 
         // 3. Monthly commissions summary
         $startOfMonth = Carbon::today()->startOfMonth();
         $endOfMonth = Carbon::today()->endOfMonth();
 
-        $monthlyCommissions = CommissionRecord::where('barber_id', $barber->id)
-            ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
-            ->sum('commission_amount');
+        $monthlyCommissions = $this->commissionRepo->getFilteredCommissions([
+            'barber_id' => $barber->id,
+            'date_start' => $startOfMonth,
+            'date_end' => $endOfMonth
+        ])->sum('commission_amount');
 
-        $monthlyBookingsCount = Booking::where('barber_id', $barber->id)
-            ->whereBetween('slot_start', [$startOfMonth, $endOfMonth])
-            ->where('status', 'completed')
-            ->count();
+        $monthlyBookingsCount = $this->bookingRepo->getFilteredBookings([
+            'barber_id' => $barber->id,
+            'date_start' => $startOfMonth,
+            'date_end' => $endOfMonth,
+            'status' => 'completed'
+        ])->count();
 
         return Inertia::render('Barber/Dashboard', [
             'bookings' => $bookings,
@@ -99,26 +117,22 @@ class BarberController extends Controller
         $endDate = $request->input('end_date', Carbon::today()->endOfMonth()->format('Y-m-d'));
 
         // Query Commissions for this barber
-        $records = CommissionRecord::with(['transaction.booking.service'])
-            ->where('barber_id', $barber->id)
-            ->whereBetween('created_at', [
-                Carbon::parse($startDate)->startOfDay(),
-                Carbon::parse($endDate)->endOfDay()
-            ])
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($rec) {
-                return [
-                    'id' => $rec->id,
-                    'invoice_number' => $rec->transaction->invoice_number,
-                    'service_name' => $rec->transaction->booking->service->name ?? 'Layanan',
-                    'customer_name' => $rec->transaction->booking ? ($rec->transaction->booking->customer ? $rec->transaction->booking->customer->name : $rec->transaction->booking->guest_name) : 'Walk-in',
-                    'service_amount' => (float) $rec->service_amount,
-                    'percentage' => (float) $rec->percentage,
-                    'commission_amount' => (float) $rec->commission_amount,
-                    'date' => $rec->created_at->format('d M Y, H:i'),
-                ];
-            });
+        $records = $this->commissionRepo->getFilteredCommissions([
+            'barber_id' => $barber->id,
+            'date_start' => Carbon::parse($startDate)->startOfDay(),
+            'date_end' => Carbon::parse($endDate)->endOfDay()
+        ])->map(function ($rec) {
+            return [
+                'id' => $rec->id,
+                'invoice_number' => $rec->transaction->invoice_number,
+                'service_name' => $rec->transaction->booking->service->name ?? 'Layanan',
+                'customer_name' => $rec->transaction->booking ? ($rec->transaction->booking->customer ? $rec->transaction->booking->customer->name : $rec->transaction->booking->guest_name) : 'Walk-in',
+                'service_amount' => (float) $rec->service_amount,
+                'percentage' => (float) $rec->percentage,
+                'commission_amount' => (float) $rec->commission_amount,
+                'date' => $rec->created_at->format('d M Y, H:i'),
+            ];
+        });
 
         $totalCommission = $records->sum('commission_amount');
         $totalServiceAmount = $records->sum('service_amount');

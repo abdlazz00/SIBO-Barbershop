@@ -6,11 +6,19 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['transaction_id', 'barber_id', 'service_amount', 'percentage', 'commission_amount'])]
+#[Fillable(['transaction_id', 'barber_id', 'payout_id', 'service_amount', 'percentage', 'commission_amount'])]
 class CommissionRecord extends Model
 {
     // PostgreSQL timestamps manual
     public $timestamps = false;
+
+    /**
+     * Relasi ke CommissionPayout
+     */
+    public function payout(): BelongsTo
+    {
+        return $this->belongsTo(CommissionPayout::class, 'payout_id');
+    }
 
     /**
      * Relasi ke Transaction

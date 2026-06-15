@@ -2,30 +2,51 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Branch;
-use App\Models\Service;
-use App\Models\Barber;
+use App\Services\BookingService;
+use App\Services\TransactionService;
+use App\Repositories\Interfaces\BranchRepositoryInterface;
+use App\Repositories\Interfaces\ProductRepositoryInterface;
+use App\Repositories\Interfaces\BookingRepositoryInterface;
+use App\Repositories\Interfaces\UserRepositoryInterface;
+use App\Repositories\Interfaces\BarberRepositoryInterface;
+use App\Repositories\Interfaces\ServiceRepositoryInterface;
 use App\Models\Booking;
-use App\Models\Product;
-use App\Models\User;
-use App\Models\Transaction;
-use App\Models\TransactionItem;
-use App\Models\CommissionRecord;
-use App\Services\ScheduleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
+use Exception;
 
 class CashierController extends Controller
 {
-    protected $scheduleService;
+    protected $bookingService;
+    protected $transactionService;
+    protected $branchRepo;
+    protected $productRepo;
+    protected $bookingRepo;
+    protected $userRepo;
+    protected $barberRepo;
+    protected $serviceRepo;
 
-    public function __construct(ScheduleService $scheduleService)
-    {
-        $this->scheduleService = $scheduleService;
+    public function __construct(
+        BookingService $bookingService,
+        TransactionService $transactionService,
+        BranchRepositoryInterface $branchRepo,
+        ProductRepositoryInterface $productRepo,
+        BookingRepositoryInterface $bookingRepo,
+        UserRepositoryInterface $userRepo,
+        BarberRepositoryInterface $barberRepo,
+        ServiceRepositoryInterface $serviceRepo
+    ) {
+        $this->bookingService = $bookingService;
+        $this->transactionService = $transactionService;
+        $this->branchRepo = $branchRepo;
+        $this->productRepo = $productRepo;
+        $this->bookingRepo = $bookingRepo;
+        $this->userRepo = $userRepo;
+        $this->barberRepo = $barberRepo;
+        $this->serviceRepo = $serviceRepo;
     }
 
     /**
@@ -40,7 +61,7 @@ class CashierController extends Controller
             abort(403, 'Kasir tidak terasosiasi dengan cabang mana pun.');
         }
 
-        $branch = Branch::findOrFail($branchId);
+        $branch = $this->branchRepo->findOrFail($branchId);
 
         // Filter parameters
         $date = $request->input('date', Carbon::today()->format('Y-m-d'));
@@ -48,38 +69,35 @@ class CashierController extends Controller
         $barberId = $request->input('barber_id');
         $search = $request->input('search');
 
-        // Query Bookings for Cashier's branch
-        $bookingsQuery = Booking::with(['service', 'barber.user', 'customer'])
-            ->where('branch_id', $branchId)
-            ->whereDate('slot_start', $date);
-
+        // Build filters array for Repository
+        $filters = [
+            'branch_id' => $branchId,
+            'date' => $date,
+        ];
         if ($status) {
-            $bookingsQuery->where('status', $status);
+            $filters['status'] = $status;
         }
-
         if ($barberId) {
-            $bookingsQuery->where('barber_id', $barberId);
+            $filters['barber_id'] = $barberId;
         }
 
+        $bookingsCollection = $this->bookingRepo->getFilteredBookings($filters);
+
+        // Search text filter
         if ($search) {
-            $bookingsQuery->where(function ($q) use ($search) {
-                $q->where('guest_name', 'like', "%{$search}%")
-                  ->orWhere('guest_phone', 'like', "%{$search}%")
-                  ->orWhereHas('customer', function ($userQuery) use ($search) {
-                      $userQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('phone', 'like', "%{$search}%");
-                  });
+            $bookingsCollection = $bookingsCollection->filter(function ($booking) use ($search) {
+                $customerName = $booking->customer ? $booking->customer->name : $booking->guest_name;
+                $customerPhone = $booking->customer ? $booking->customer->phone : $booking->guest_phone;
+                return str_contains(strtolower($customerName), strtolower($search)) ||
+                       str_contains(strtolower($customerPhone), strtolower($search));
             });
         }
 
-        $bookings = $bookingsQuery->orderBy('slot_start', 'asc')->get()->map(function ($booking) {
-            // Compute price override or default
-            $override = DB::table('barber_services')
-                ->where('barber_id', $booking->barber_id)
-                ->where('service_id', $booking->service_id)
-                ->first();
-
-            $price = $override ? $override->price : $booking->service->default_price;
+        $bookings = $bookingsCollection->map(function ($booking) {
+            // Get dynamically calculated final price
+            $servicesWithPrice = $this->bookingService->getServicesForBarber($booking->barber_id);
+            $serviceObj = collect($servicesWithPrice)->firstWhere('id', $booking->service_id);
+            $price = $serviceObj ? $serviceObj['price'] : $booking->service->default_price;
 
             return [
                 'id' => $booking->id,
@@ -95,38 +113,25 @@ class CashierController extends Controller
                 'status' => $booking->status,
                 'price' => (float) $price,
             ];
-        });
+        })->values();
 
-        // Get active barbers for walk-in booking dropdown
-        $barbers = Barber::with('user')
-            ->where('branch_id', $branchId)
-            ->where('status', 'active')
-            ->get()
+        // Get active barbers for dropdown
+        $barbers = $this->bookingService->getBarbersForBranch($branchId)
             ->map(function ($b) {
                 return [
-                    'id' => $b->id,
-                    'name' => $b->user->name,
+                    'id' => $b['id'],
+                    'name' => $b['name'],
                 ];
             });
 
         // Get active services for dropdown
-        $services = Service::where('status', 'active')->get();
+        $services = $this->bookingService->getActiveServices();
 
         // Get active products for POS catalog
-        $products = Product::where('branch_id', $branchId)
-            ->where('status', 'active')
-            ->get();
+        $products = $this->productRepo->getActiveProductsByBranch($branchId);
 
         // Stats for Today
-        $stats = [
-            'total_bookings' => Booking::where('branch_id', $branchId)->whereDate('slot_start', $date)->count(),
-            'confirmed' => Booking::where('branch_id', $branchId)->whereDate('slot_start', $date)->where('status', 'confirmed')->count(),
-            'in_progress' => Booking::where('branch_id', $branchId)->whereDate('slot_start', $date)->where('status', 'in_progress')->count(),
-            'completed' => Booking::where('branch_id', $branchId)->whereDate('slot_start', $date)->where('status', 'completed')->count(),
-            'revenue' => (float) Transaction::whereHas('booking', function ($q) use ($branchId, $date) {
-                $q->where('branch_id', $branchId)->whereDate('slot_start', $date);
-            })->sum('grand_total'),
-        ];
+        $stats = $this->transactionService->getTodayStats($branchId, $date);
 
         return Inertia::render('Cashier/Dashboard', [
             'bookings' => $bookings,
@@ -160,8 +165,9 @@ class CashierController extends Controller
             'status' => 'required|in:in_progress,cancelled',
         ]);
 
-        $booking->status = $request->status;
-        $booking->save();
+        $this->bookingRepo->update($booking->id, [
+            'status' => $request->status,
+        ]);
 
         return back()->with('success', 'Status booking berhasil diperbarui.');
     }
@@ -175,7 +181,7 @@ class CashierController extends Controller
             'phone' => 'required|string',
         ]);
 
-        $user = User::where('phone', $request->phone)
+        $user = \App\Models\User::where('phone', $request->phone)
             ->where('role', 'customer')
             ->first();
 
@@ -204,54 +210,38 @@ class CashierController extends Controller
         $branchId = $cashier->branch_id;
 
         $request->validate([
-            'service_id' => 'required|exists:services,id',
-            'barber_id' => 'required|exists:barbers,id',
+            'service_id' => 'required|integer',
+            'barber_id' => 'required|integer',
             'time' => 'required|regex:/^[0-9]{2}:[0-9]{2}$/',
             'customer_type' => 'required|in:guest,member',
             'guest_name' => 'required_if:customer_type,guest|nullable|string|max:100',
             'guest_phone' => 'required_if:customer_type,guest|nullable|string|max:20',
-            'customer_id' => 'required_if:customer_type,member|nullable|exists:users,id',
+            'customer_id' => 'required_if:customer_type,member|nullable|integer',
         ]);
 
-        $service = Service::findOrFail($request->service_id);
-        $duration = $service->duration_minutes;
-
-        // Walk-in booking is always for today
-        $todayStr = Carbon::today()->format('Y-m-d');
-        $slotStart = Carbon::parse($todayStr . ' ' . $request->time);
-        $slotEnd = $slotStart->copy()->addMinutes($duration);
-
-        // Check weekly schedule & leaves
-        $availableSlots = $this->scheduleService->getAvailableSlots(
-            $request->barber_id,
-            $todayStr,
-            $request->service_id
-        );
-
-        if (!in_array($request->time, $availableSlots)) {
-            return back()->withErrors([
-                'time' => 'Slot waktu terpilih tidak valid atau barber sedang sibuk/libur.',
-            ]);
-        }
-
-        $booking = new Booking();
-        $booking->branch_id = $branchId;
-        $booking->barber_id = $request->barber_id;
-        $booking->service_id = $request->service_id;
-        $booking->slot_start = $slotStart;
-        $booking->slot_end = $slotEnd;
-        $booking->status = 'confirmed';
+        $bookingData = [
+            'branch_id' => $branchId,
+            'service_id' => $request->service_id,
+            'barber_id' => $request->barber_id,
+            'date' => Carbon::today()->format('Y-m-d'),
+            'time' => $request->time,
+        ];
 
         if ($request->customer_type === 'member') {
-            $booking->customer_id = $request->customer_id;
+            $bookingData['customer_id'] = $request->customer_id;
         } else {
-            $booking->guest_name = $request->guest_name;
-            $booking->guest_phone = $request->guest_phone;
+            $bookingData['guest_name'] = $request->guest_name;
+            $bookingData['guest_phone'] = $request->guest_phone;
         }
 
-        $booking->save();
-
-        return back()->with('success', 'Booking walk-in berhasil dibuat.');
+        try {
+            $this->bookingService->createBooking($bookingData);
+            return back()->with('success', 'Booking walk-in berhasil dibuat.');
+        } catch (Exception $e) {
+            return back()->withErrors([
+                'time' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -273,13 +263,10 @@ class CashierController extends Controller
                 ]);
             }
 
-            // Get service price
-            $override = DB::table('barber_services')
-                ->where('barber_id', $booking->barber_id)
-                ->where('service_id', $booking->service_id)
-                ->first();
-
-            $servicePrice = $override ? $override->price : $booking->service->default_price;
+            // Get service price via BookingService / ServiceRepository
+            $servicesWithPrice = $this->bookingService->getServicesForBarber($booking->barber_id);
+            $serviceObj = collect($servicesWithPrice)->firstWhere('id', $booking->service_id);
+            $servicePrice = $serviceObj ? $serviceObj['price'] : $booking->service->default_price;
 
             $bookingDetails = [
                 'id' => $booking->id,
@@ -295,10 +282,7 @@ class CashierController extends Controller
         }
 
         // Active products in cashier's branch
-        $products = Product::where('branch_id', $cashier->branch_id)
-            ->where('status', 'active')
-            ->where('stock', '>', 0)
-            ->get();
+        $products = $this->productRepo->getActiveProductsByBranch($cashier->branch_id);
 
         return Inertia::render('Cashier/POS', [
             'booking' => $bookingDetails,
@@ -312,146 +296,26 @@ class CashierController extends Controller
     public function checkout(Request $request)
     {
         $cashier = Auth::user();
-        $branchId = $cashier->branch_id;
 
         $request->validate([
-            'booking_id' => 'nullable|exists:bookings,id',
+            'booking_id' => 'nullable|integer',
             'payment_type' => 'required|in:cash,transfer,qris',
             'products' => 'nullable|array',
-            'products.*.id' => 'required|exists:products,id',
+            'products.*.id' => 'required|integer',
             'products.*.qty' => 'required|integer|min:1',
         ]);
 
-        $booking = null;
-        $totalService = 0.00;
-
-        if ($request->booking_id) {
-            $booking = Booking::with(['service', 'barber'])->findOrFail($request->booking_id);
-
-            if ($booking->branch_id !== $branchId) {
-                abort(403, 'Aksi tidak diperbolehkan pada cabang lain.');
-            }
-
-            if ($booking->status !== 'in_progress') {
-                return back()->withErrors(['error' => 'Booking harus berstatus In-Progress untuk checkout.']);
-            }
-
-            // Calculate service cost
-            $override = DB::table('barber_services')
-                ->where('barber_id', $booking->barber_id)
-                ->where('service_id', $booking->service_id)
-                ->first();
-
-            $servicePrice = $override ? $override->price : $booking->service->default_price;
-            $totalService = (float) $servicePrice;
-        }
-
-        $totalProduct = 0.00;
-
-        // Validate product stocks and calculate total product cost
-        $itemsToSell = [];
-        if ($request->has('products') && count($request->products) > 0) {
-            foreach ($request->products as $pItem) {
-                $product = Product::lockForUpdate()->findOrFail($pItem['id']);
-                
-                if (+$product->branch_id !== +$branchId) {
-                    return back()->withErrors(['error' => "Produk {$product->name} tidak berada di cabang Anda."]);
-                }
-
-                if ($product->stock < $pItem['qty']) {
-                    return back()->withErrors(['error' => "Stok produk {$product->name} tidak mencukupi (Tersisa: {$product->stock})."]);
-                }
-
-                $subtotal = (float) ($product->price * $pItem['qty']);
-                $totalProduct += $subtotal;
-
-                $itemsToSell[] = [
-                    'product' => $product,
-                    'qty' => $pItem['qty'],
-                    'unit_price' => (float) $product->price,
-                    'subtotal' => $subtotal,
-                ];
-            }
-        }
-
-        // Must buy at least service or product
-        if (!$booking && count($itemsToSell) === 0) {
-            return back()->withErrors(['error' => 'Keranjang transaksi kosong.']);
-        }
-
-        $grandTotal = $totalService + $totalProduct;
-
-        // DB Transaction for atomicity
-        DB::beginTransaction();
-
         try {
-            // Generate Invoice number
-            $datePrefix = Carbon::now()->format('Ymd');
-            $todayTxCount = Transaction::whereDate('created_at', Carbon::today())->count();
-            $invoiceNumber = 'TRX-' . $datePrefix . '-' . str_pad($todayTxCount + 1, 3, '0', STR_PAD_LEFT);
-
-            // 1. Create Transaction
-            $transaction = new Transaction();
-            $transaction->invoice_number = $invoiceNumber;
-            $transaction->booking_id = $booking ? $booking->id : null;
-            $transaction->cashier_id = $cashier->id;
-            $transaction->payment_type = $request->payment_type;
-            $transaction->total_service = $totalService;
-            $transaction->total_product = $totalProduct;
-            $transaction->grand_total = $grandTotal;
-            $transaction->save();
-
-            // 2. Create Transaction Item for Service
-            if ($booking) {
-                $serviceItem = new TransactionItem();
-                $serviceItem->transaction_id = $transaction->id;
-                $serviceItem->item_type = 'service';
-                $serviceItem->reference_id = $booking->service_id;
-                $serviceItem->qty = 1;
-                $serviceItem->unit_price = $totalService;
-                $serviceItem->subtotal = $totalService;
-                $serviceItem->save();
-            }
-
-            // 3. Create Transaction Items for Products & Update Stocks
-            foreach ($itemsToSell as $sell) {
-                $txItem = new TransactionItem();
-                $txItem->transaction_id = $transaction->id;
-                $txItem->item_type = 'product';
-                $txItem->reference_id = $sell['product']->id;
-                $txItem->qty = $sell['qty'];
-                $txItem->unit_price = $sell['unit_price'];
-                $txItem->subtotal = $sell['subtotal'];
-                $txItem->save();
-
-                // Decrement stock
-                $sell['product']->decrement('stock', $sell['qty']);
-            }
-
-            // 4. Calculate Barber Commission (service only) & Complete Booking status
-            if ($booking) {
-                $commissionPercentage = $booking->barber->commission_percentage;
-                $commissionAmount = ($totalService * $commissionPercentage) / 100;
-
-                $commission = new CommissionRecord();
-                $commission->transaction_id = $transaction->id;
-                $commission->barber_id = $booking->barber_id;
-                $commission->service_amount = $totalService;
-                $commission->percentage = $commissionPercentage;
-                $commission->commission_amount = $commissionAmount;
-                $commission->save();
-
-                $booking->status = 'completed';
-                $booking->save();
-            }
-
-            DB::commit();
+            $transaction = $this->transactionService->processCheckout(
+                $request->all(),
+                $cashier->id,
+                $cashier->branch_id
+            );
 
             return redirect()->route('cashier.transactions.receipt', $transaction->uuid)
                 ->with('success', 'Transaksi berhasil diselesaikan.');
 
-        } catch (\Exception $e) {
-            DB::rollBack();
+        } catch (Exception $e) {
             return back()->withErrors(['error' => 'Gagal menyelesaikan transaksi: ' . $e->getMessage()]);
         }
     }
@@ -461,47 +325,23 @@ class CashierController extends Controller
      */
     public function receipt(string $uuid): Response
     {
-        $transaction = Transaction::with([
-            'booking.service',
-            'booking.barber.user',
-            'cashier',
-            'booking.customer'
-        ])
-        ->where('uuid', $uuid)
-        ->firstOrFail();
-
-        $items = TransactionItem::where('transaction_id', $transaction->id)->get()->map(function ($item) {
-            $name = '';
-            if ($item->item_type === 'service') {
-                $name = Service::find($item->reference_id)->name ?? 'Service';
-            } else {
-                $name = Product::find($item->reference_id)->name ?? 'Product';
-            }
-            return [
-                'name' => $name,
-                'type' => $item->item_type,
-                'qty' => $item->qty,
-                'unit_price' => (float) $item->unit_price,
-                'subtotal' => (float) $item->subtotal,
-            ];
-        });
-
+        $details = $this->transactionService->getReceiptDetails($uuid);
         $cashier = Auth::user();
-        $branch = Branch::findOrFail($cashier->branch_id);
+        $branch = $this->branchRepo->findOrFail($cashier->branch_id);
 
         return Inertia::render('Cashier/Receipt', [
             'transaction' => [
-                'invoice_number' => $transaction->invoice_number,
-                'payment_type' => strtoupper($transaction->payment_type),
-                'total_service' => (float) $transaction->total_service,
-                'total_product' => (float) $transaction->total_product,
-                'grand_total' => (float) $transaction->grand_total,
-                'created_at' => $transaction->created_at->format('d M Y, H:i'),
-                'cashier_name' => $transaction->cashier->name,
-                'customer_name' => $transaction->booking ? ($transaction->booking->customer ? $transaction->booking->customer->name : $transaction->booking->guest_name) : 'Walk-in',
-                'barber_name' => $transaction->booking ? $transaction->booking->barber->user->name : '-',
+                'invoice_number' => $details['transaction']->invoice_number,
+                'payment_type' => strtoupper($details['transaction']->payment_type),
+                'total_service' => (float) $details['transaction']->total_service,
+                'total_product' => (float) $details['transaction']->total_product,
+                'grand_total' => (float) $details['transaction']->grand_total,
+                'created_at' => $details['transaction']->created_at->format('d M Y, H:i'),
+                'cashier_name' => $details['transaction']->cashier->name,
+                'customer_name' => $details['transaction']->booking ? ($details['transaction']->booking->customer ? $details['transaction']->booking->customer->name : $details['transaction']->booking->guest_name) : 'Walk-in',
+                'barber_name' => $details['transaction']->booking ? $details['transaction']->booking->barber->user->name : '-',
             ],
-            'items' => $items,
+            'items' => $details['items'],
             'branch' => $branch,
         ]);
     }

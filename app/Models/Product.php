@@ -30,4 +30,12 @@ class Product extends Model
     {
         return $this->belongsTo(Branch::class, 'branch_id');
     }
+
+    /**
+     * Relasi ke ProductStockMutation (riwayat stok)
+     */
+    public function stockMutations()
+    {
+        return $this->hasMany(ProductStockMutation::class, 'product_id');
+    }
 }

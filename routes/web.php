@@ -36,6 +36,7 @@ Route::get('/', function () {
 
 Route::get('/booking', [BookingController::class, 'index'])->name('booking.index');
 Route::post('/booking/barbers', [BookingController::class, 'getBarbers'])->name('booking.barbers');
+Route::post('/booking/services', [BookingController::class, 'getServices'])->name('booking.services');
 Route::post('/booking/slots', [BookingController::class, 'getSlots'])->name('booking.slots');
 Route::post('/booking', [BookingController::class, 'store'])->name('booking.store');
 Route::get('/booking/success/{uuid}', [BookingController::class, 'success'])->name('booking.success');
@@ -73,6 +74,9 @@ Route::middleware(['auth', 'role:owner'])->group(function () {
     Route::post('/owner/products', [OwnerController::class, 'storeProduct'])->name('owner.products.store');
     Route::patch('/owner/products/{product}', [OwnerController::class, 'updateProduct'])->name('owner.products.update');
     Route::delete('/owner/products/{product}', [OwnerController::class, 'deleteProduct'])->name('owner.products.destroy');
+    Route::post('/owner/products/{product}/restock', [OwnerController::class, 'restockProduct'])->name('owner.products.restock');
+    Route::post('/owner/products/{product}/adjust', [OwnerController::class, 'adjustProduct'])->name('owner.products.adjust');
+    Route::get('/owner/products/{product}/mutations', [OwnerController::class, 'getProductMutations'])->name('owner.products.mutations');
 
     // Schedules & Leaves
     Route::get('/owner/schedules', [OwnerController::class, 'listSchedules'])->name('owner.schedules.index');
@@ -82,6 +86,9 @@ Route::middleware(['auth', 'role:owner'])->group(function () {
 
     // Commissions Report
     Route::get('/owner/commissions', [OwnerController::class, 'reportCommissions'])->name('owner.commissions.index');
+    Route::get('/owner/commissions/{barber}/unpaid', [OwnerController::class, 'getUnpaidCommissions'])->name('owner.commissions.unpaid');
+    Route::get('/owner/commissions/{barber}/payouts', [OwnerController::class, 'getPayouts'])->name('owner.commissions.payouts');
+    Route::post('/owner/commissions/{barber}/payout', [OwnerController::class, 'storePayout'])->name('owner.commissions.payout.store');
 });
 
 Route::middleware(['auth', 'role:cashier'])->group(function () {
