@@ -178,43 +178,50 @@ class DatabaseSeeder extends Seeder
         // Dedi Senior (Senopati) override Premium Haircut to 95K
         $barber3->services()->attach($service1->id, ['price' => 95000.00]);
 
-        // 6. Seed Products (Retail)
-        // Branch Kemang Products
-        $product1Kemang = Product::create([
-            'branch_id' => $branchKemang->id,
+        // 6. Seed Products (Retail) & Branch Stocks
+        $p1 = Product::create([
             'name' => 'Premium Strong Hold Pomade',
             'category' => 'Pomade',
             'price' => 120000.00,
-            'stock' => 15,
             'status' => 'active',
         ]);
-
-        $product2Kemang = Product::create([
-            'branch_id' => $branchKemang->id,
+        
+        $p2 = Product::create([
             'name' => 'Anti-Hairfall Hair Tonic',
             'category' => 'Vitamin',
             'price' => 85000.00,
-            'stock' => 20,
             'status' => 'active',
         ]);
 
-        // Branch Senopati Products
-        Product::create([
-            'branch_id' => $branchSenopati->id,
-            'name' => 'Premium Strong Hold Pomade',
-            'category' => 'Pomade',
-            'price' => 120000.00,
-            'stock' => 10,
-            'status' => 'active',
-        ]);
-
-        Product::create([
-            'branch_id' => $branchSenopati->id,
+        $p3 = Product::create([
             'name' => 'Cooling Shampoo Menthol',
             'category' => 'Shampoo',
             'price' => 65000.00,
-            'stock' => 12,
             'status' => 'active',
+        ]);
+
+        // Branch Kemang stocks
+        \App\Models\BranchProductStock::create([
+            'product_id' => $p1->id,
+            'branch_id' => $branchKemang->id,
+            'stock' => 15,
+        ]);
+        \App\Models\BranchProductStock::create([
+            'product_id' => $p2->id,
+            'branch_id' => $branchKemang->id,
+            'stock' => 20,
+        ]);
+
+        // Branch Senopati stocks
+        \App\Models\BranchProductStock::create([
+            'product_id' => $p1->id,
+            'branch_id' => $branchSenopati->id,
+            'stock' => 10,
+        ]);
+        \App\Models\BranchProductStock::create([
+            'product_id' => $p3->id,
+            'branch_id' => $branchSenopati->id,
+            'stock' => 12,
         ]);
 
         // 7. Seed Weekly Schedules (Shift Kerja default)

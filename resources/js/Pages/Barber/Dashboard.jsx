@@ -128,7 +128,7 @@ export default function Dashboard({ bookings = [], shift, summary }) {
                                     href={route('barber.commissions.index')}
                                     className="w-full btn-primary py-3 flex items-center justify-center space-x-2 text-xs font-bold shadow-sm"
                                 >
-                                    <span>📊 LIHAT RINCIAN KOMISI SAYA</span>
+                                    <span>LIHAT RINCIAN KOMISI SAYA</span>
                                 </Link>
                             </div>
                         </div>

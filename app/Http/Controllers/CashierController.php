@@ -11,8 +11,14 @@ use App\Repositories\Interfaces\UserRepositoryInterface;
 use App\Repositories\Interfaces\BarberRepositoryInterface;
 use App\Repositories\Interfaces\ServiceRepositoryInterface;
 use App\Models\Booking;
+use App\Models\Product;
+use App\Models\Branch;
+use App\Models\BranchProductStock;
+use App\Models\ProductStockMutation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -344,5 +350,547 @@ class CashierController extends Controller
             'items' => $details['items'],
             'branch' => $branch,
         ]);
+    }
+
+    /**
+     * Show cashier transaction history.
+     */
+    public function transactionsIndex(Request $request): Response
+    {
+        $cashier = Auth::user();
+        $filters = $request->only(['date_start', 'date_end', 'search', 'payment_type']);
+        $filters['branch_id'] = $cashier->branch_id;
+
+        $transactions = $this->transactionService->getFilteredTransactions($filters)->map(function ($tx) {
+            return [
+                'id' => $tx->id,
+                'uuid' => $tx->uuid,
+                'invoice_number' => $tx->invoice_number,
+                'payment_type' => strtoupper($tx->payment_type),
+                'total_service' => (float) $tx->total_service,
+                'total_product' => (float) $tx->total_product,
+                'grand_total' => (float) $tx->grand_total,
+                'created_at' => $tx->created_at->format('d M Y, H:i'),
+                'cashier_name' => $tx->cashier->name ?? 'System',
+                'customer_name' => $tx->booking ? ($tx->booking->customer ? $tx->booking->customer->name : $tx->booking->guest_name) : 'Walk-in',
+                'barber_name' => $tx->booking ? ($tx->booking->barber->user->name ?? '-') : '-',
+            ];
+        });
+
+        return Inertia::render('Cashier/Transactions', [
+            'transactions' => $transactions,
+            'filters' => $filters,
+        ]);
+    }
+
+    /**
+     * Show cashier products (inventory list) for their branch.
+     */
+    public function listProducts(): Response
+    {
+        $cashier = Auth::user();
+        $branch = $this->branchRepo->findOrFail($cashier->branch_id);
+
+        $products = Product::whereNull('deleted_at')
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($p) use ($cashier) {
+                $stocks = DB::table('branch_product_stocks')
+                    ->join('branches', 'branches.id', '=', 'branch_product_stocks.branch_id')
+                    ->where('product_id', $p->id)
+                    ->select('branch_product_stocks.branch_id', 'branches.name as branch_name', 'branch_product_stocks.stock')
+                    ->get();
+
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'category' => $p->category,
+                    'price' => (float) $p->price,
+                    'status' => $p->status,
+                    'photo_path' => $p->photo_path,
+                    'stocks' => $stocks,
+                ];
+            });
+
+        return Inertia::render('Cashier/Products', [
+            'products' => $products,
+            'branch' => $branch,
+        ]);
+    }
+
+    /**
+     * Store new product and set initial stock for cashier branch.
+     */
+    public function storeProduct(Request $request)
+    {
+        $cashier = Auth::user();
+        $branchId = $cashier->branch_id;
+
+        $request->validate([
+            'name' => 'required|string|max:100',
+            'category' => 'required|string|max:50',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+            'photo' => 'nullable|image|mimes:jpg,jpeg,png',
+        ]);
+
+        $photoPath = null;
+        if ($request->hasFile('photo')) {
+            $photoPath = $this->uploadAndCompressImage($request->file('photo'), 'photos');
+        }
+
+        DB::transaction(function () use ($request, $photoPath, $branchId) {
+            $product = Product::whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($request->name))])
+                ->whereRaw('LOWER(TRIM(category)) = ?', [strtolower(trim($request->category))])
+                ->first();
+
+            if (!$product) {
+                $product = Product::create([
+                    'name' => $request->name,
+                    'category' => $request->category,
+                    'price' => $request->price,
+                    'photo_path' => $photoPath,
+                    'status' => 'active',
+                ]);
+            } else {
+                $product->price = $request->price;
+                if ($photoPath) {
+                    $product->photo_path = $photoPath;
+                }
+                $product->status = 'active';
+                $product->save();
+            }
+
+            BranchProductStock::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'branch_id' => $branchId,
+                ],
+                [
+                    'stock' => $request->stock,
+                ]
+            );
+
+            ProductStockMutation::create([
+                'product_id' => $product->id,
+                'branch_id' => $branchId,
+                'type' => 'in_restock',
+                'reference_id' => null,
+                'qty' => $request->stock,
+                'stock_before' => 0,
+                'stock_after' => $request->stock,
+                'notes' => 'Registrasi produk & stok awal (Kasir)',
+                'created_by' => auth()->id(),
+            ]);
+        });
+
+        return back()->with('success', 'Produk retail berhasil didaftarkan.');
+    }
+
+    /**
+     * Update product details.
+     */
+    public function updateProduct(Request $request, Product $product)
+    {
+        $request->validate([
+            'name' => 'required|string|max:100',
+            'category' => 'required|string|max:50',
+            'price' => 'required|numeric|min:0',
+            'status' => 'required|in:active,inactive',
+            'photo' => 'nullable|image|mimes:jpg,jpeg,png',
+        ]);
+
+        $photoPath = $product->photo_path;
+        if ($request->hasFile('photo')) {
+            if ($product->photo_path) {
+                Storage::disk('public')->delete($product->photo_path);
+            }
+            $photoPath = $this->uploadAndCompressImage($request->file('photo'), 'photos');
+        }
+
+        $product->update([
+            'name' => $request->name,
+            'category' => $request->category,
+            'price' => $request->price,
+            'status' => $request->status,
+            'photo_path' => $photoPath,
+        ]);
+
+        return back()->with('success', 'Detail produk retail berhasil diperbarui.');
+    }
+
+    /**
+     * Delete (deactivate) product.
+     */
+    public function deleteProduct(Product $product)
+    {
+        $product->status = 'inactive';
+        $product->save();
+        $product->delete();
+
+        return back()->with('success', 'Produk retail berhasil dinonaktifkan.');
+    }
+
+    /**
+     * Single restock a product.
+     */
+    public function restockProduct(Request $request, Product $product)
+    {
+        $cashier = Auth::user();
+        $branchId = $cashier->branch_id;
+
+        $request->validate([
+            'qty' => 'required|integer|min:1',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request, $product, $branchId) {
+            $qty = $request->qty;
+            
+            $stockRecord = BranchProductStock::firstOrCreate(
+                ['product_id' => $product->id, 'branch_id' => $branchId],
+                ['stock' => 0]
+            );
+
+            $stockBefore = $stockRecord->stock;
+            $stockRecord->increment('stock', $qty);
+            $stockAfter = $stockRecord->fresh()->stock;
+
+            ProductStockMutation::create([
+                'product_id' => $product->id,
+                'branch_id' => $branchId,
+                'type' => 'in_restock',
+                'reference_id' => null,
+                'qty' => $qty,
+                'stock_before' => $stockBefore,
+                'stock_after' => $stockAfter,
+                'notes' => $request->notes ?? 'Pencatatan stok masuk (Restock Kasir)',
+                'created_by' => auth()->id(),
+            ]);
+        });
+
+        return back()->with('success', 'Stok produk berhasil ditambah (Restock).');
+    }
+
+    /**
+     * Single adjust a product (Stock Opname).
+     */
+    public function adjustProduct(Request $request, Product $product)
+    {
+        $cashier = Auth::user();
+        $branchId = $cashier->branch_id;
+
+        $request->validate([
+            'actual_stock' => 'required|integer|min:0',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request, $product, $branchId) {
+            $actual = $request->actual_stock;
+
+            $stockRecord = BranchProductStock::firstOrCreate(
+                ['product_id' => $product->id, 'branch_id' => $branchId],
+                ['stock' => 0]
+            );
+
+            $stockBefore = $stockRecord->stock;
+            $diff = $actual - $stockBefore;
+
+            if ($diff === 0) {
+                return;
+            }
+
+            $stockRecord->stock = $actual;
+            $stockRecord->save();
+
+            ProductStockMutation::create([
+                'product_id' => $product->id,
+                'branch_id' => $branchId,
+                'type' => $diff > 0 ? 'in_opname_correction' : 'out_opname_correction',
+                'reference_id' => null,
+                'qty' => abs($diff),
+                'stock_before' => $stockBefore,
+                'stock_after' => $actual,
+                'notes' => $request->notes ?? 'Penyesuaian stok opname (Kasir)',
+                'created_by' => auth()->id(),
+            ]);
+        });
+
+        return back()->with('success', 'Stok produk berhasil disesuaikan (Stock Opname).');
+    }
+
+    /**
+     * Get stock mutations history.
+     */
+    public function getProductMutations(Product $product)
+    {
+        $cashier = Auth::user();
+        $branchId = $cashier->branch_id;
+
+        $mutations = ProductStockMutation::with(['creator', 'branch'])
+            ->where('product_id', $product->id)
+            ->where('branch_id', $branchId)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($m) {
+                $typeLabel = match ($m->type) {
+                    'in_restock' => 'Stok Masuk (Restock)',
+                    'out_sale' => 'Penjualan (POS)',
+                    'in_opname_correction' => 'Koreksi Opname (+)',
+                    'out_opname_correction' => 'Koreksi Opname (-)',
+                    'out_damaged' => 'Barang Rusak/Hilang',
+                    default => 'Penyesuaian Lainnya',
+                };
+
+                return [
+                    'id' => $m->id,
+                    'type' => $m->type,
+                    'type_label' => $typeLabel,
+                    'qty' => $m->qty,
+                    'stock_before' => $m->stock_before,
+                    'stock_after' => $m->stock_after,
+                    'notes' => $m->notes ?? '-',
+                    'operator' => $m->creator->name ?? 'Sistem',
+                    'branch_name' => $m->branch->name ?? '-',
+                    'date' => $m->created_at->format('d M Y, H:i'),
+                ];
+            });
+
+        return response()->json(['mutations' => $mutations]);
+    }
+
+    /**
+     * Show bulk restock form.
+     */
+    public function showRestockForm(): Response
+    {
+        $cashier = Auth::user();
+        $branch = $this->branchRepo->findOrFail($cashier->branch_id);
+
+        $products = Product::whereNull('deleted_at')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+
+        return Inertia::render('Cashier/ProductsRestock', [
+            'branch' => $branch,
+            'products' => $products,
+        ]);
+    }
+
+    /**
+     * Store bulk restock.
+     */
+    public function storeBulkRestock(Request $request)
+    {
+        $cashier = Auth::user();
+        $branchId = $cashier->branch_id;
+
+        $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.qty' => 'required|integer|min:1',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request, $branchId) {
+            foreach ($request->items as $item) {
+                $product = Product::findOrFail($item['product_id']);
+
+                $stockRecord = BranchProductStock::firstOrCreate(
+                    [
+                        'product_id' => $product->id,
+                        'branch_id' => $branchId,
+                    ],
+                    [
+                        'stock' => 0,
+                    ]
+                );
+
+                $qty = $item['qty'];
+                $stockBefore = $stockRecord->stock;
+                $stockRecord->increment('stock', $qty);
+                $stockAfter = $stockRecord->fresh()->stock;
+
+                ProductStockMutation::create([
+                    'product_id' => $product->id,
+                    'branch_id' => $branchId,
+                    'type' => 'in_restock',
+                    'reference_id' => null,
+                    'qty' => $qty,
+                    'stock_before' => $stockBefore,
+                    'stock_after' => $stockAfter,
+                    'notes' => $request->notes ?? 'Pencatatan stok masuk (Bulk Restock Kasir)',
+                    'created_by' => auth()->id(),
+                ]);
+            }
+        });
+
+        return redirect()->route('cashier.products.index')->with('success', 'Bulk restock produk berhasil disimpan.');
+    }
+
+    /**
+     * Show bulk adjust form.
+     */
+    public function showAdjustForm(): Response
+    {
+        $cashier = Auth::user();
+        $branch = $this->branchRepo->findOrFail($cashier->branch_id);
+
+        $products = Product::whereNull('deleted_at')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($p) use ($cashier) {
+                $stockRecord = BranchProductStock::where('product_id', $p->id)
+                    ->where('branch_id', $cashier->branch_id)
+                    ->first();
+                // Set stock as a property on product
+                $p->stock = $stockRecord ? $stockRecord->stock : 0;
+                return $p;
+            });
+
+        return Inertia::render('Cashier/ProductsAdjust', [
+            'branch' => $branch,
+            'products' => $products,
+        ]);
+    }
+
+    /**
+     * Store bulk adjust.
+     */
+    public function storeBulkAdjust(Request $request)
+    {
+        $cashier = Auth::user();
+        $branchId = $cashier->branch_id;
+
+        $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.actual_stock' => 'required|integer|min:0',
+            'items.*.notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request, $branchId) {
+            foreach ($request->items as $item) {
+                $product = Product::findOrFail($item['product_id']);
+
+                $stockRecord = BranchProductStock::firstOrCreate(
+                    [
+                        'product_id' => $product->id,
+                        'branch_id' => $branchId,
+                    ],
+                    [
+                        'stock' => 0,
+                    ]
+                );
+
+                $actual = $item['actual_stock'];
+                $stockBefore = $stockRecord->stock;
+                $diff = $actual - $stockBefore;
+
+                if ($diff === 0) {
+                    continue;
+                }
+
+                $stockRecord->stock = $actual;
+                $stockRecord->save();
+
+                ProductStockMutation::create([
+                    'product_id' => $product->id,
+                    'branch_id' => $branchId,
+                    'type' => $diff > 0 ? 'in_opname_correction' : 'out_opname_correction',
+                    'reference_id' => null,
+                    'qty' => abs($diff),
+                    'stock_before' => $stockBefore,
+                    'stock_after' => $actual,
+                    'notes' => $item['notes'] ?? 'Penyesuaian bulk stok opname (Kasir)',
+                    'created_by' => auth()->id(),
+                ]);
+            }
+        });
+
+        return redirect()->route('cashier.products.index')->with('success', 'Bulk penyesuaian stok opname berhasil disimpan.');
+    }
+
+    /**
+     * Upload and compress image.
+     */
+    private function uploadAndCompressImage($file, $folder)
+    {
+        $path = $file->store($folder, 'public');
+        $absolutePath = storage_path('app/public/' . $path);
+
+        if (extension_loaded('gd')) {
+            list($width, $height, $type) = getimagesize($absolutePath);
+            
+            $maxDim = 1000;
+            if ($width > $maxDim || $height > $maxDim) {
+                $ratio = $width / $height;
+                if ($ratio > 1) {
+                    $newWidth = $maxDim;
+                    $newHeight = $maxDim / $ratio;
+                } else {
+                    $newHeight = $maxDim;
+                    $newWidth = $maxDim * $ratio;
+                }
+
+                $src = null;
+                switch ($type) {
+                    case IMAGETYPE_JPEG:
+                        $src = imagecreatefromjpeg($absolutePath);
+                        break;
+                    case IMAGETYPE_PNG:
+                        $src = imagecreatefrompng($absolutePath);
+                        break;
+                    case IMAGETYPE_GIF:
+                        $src = imagecreatefromgif($absolutePath);
+                        break;
+                    case IMAGETYPE_WEBP:
+                        $src = imagecreatefromwebp($absolutePath);
+                        break;
+                }
+
+                if ($src) {
+                    $dst = imagecreatetruecolor($newWidth, $newHeight);
+                    
+                    if ($type == IMAGETYPE_PNG) {
+                        imagealphablending($dst, false);
+                        imagesavealpha($dst, true);
+                    }
+
+                    imagecopyresampled($dst, $src, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                    
+                    switch ($type) {
+                        case IMAGETYPE_JPEG:
+                            imagejpeg($dst, $absolutePath, 80);
+                            break;
+                        case IMAGETYPE_PNG:
+                            imagepng($dst, $absolutePath, 7);
+                            break;
+                        case IMAGETYPE_GIF:
+                            imagegif($dst, $absolutePath);
+                            break;
+                        case IMAGETYPE_WEBP:
+                            imagewebp($dst, $absolutePath, 80);
+                            break;
+                    }
+                    
+                    imagedestroy($src);
+                    imagedestroy($dst);
+                }
+            } else {
+                if ($type == IMAGETYPE_JPEG) {
+                    $src = imagecreatefromjpeg($absolutePath);
+                    if ($src) {
+                        imagejpeg($src, $absolutePath, 85);
+                        imagedestroy($src);
+                    }
+                }
+            }
+        }
+        
+        return $path;
     }
 }

@@ -436,7 +436,27 @@ class OwnerController extends Controller
      */
     public function listProducts(): Response
     {
-        $products = Product::with('branch')->whereNull('deleted_at')->get();
+        $products = Product::whereNull('deleted_at')
+            ->with(['branchStocks.branch'])
+            ->get()
+            ->map(function ($p) {
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'category' => $p->category,
+                    'price' => (float) $p->price,
+                    'photo_path' => $p->photo_path,
+                    'status' => $p->status,
+                    'stocks' => $p->branchStocks->map(function ($bs) {
+                        return [
+                            'branch_id' => $bs->branch_id,
+                            'branch_name' => $bs->branch->name ?? '-',
+                            'stock' => $bs->stock,
+                        ];
+                    })->values()->toArray(),
+                ];
+            });
+
         $branches = Branch::whereNull('deleted_at')->get();
 
         return Inertia::render('Owner/Products', [
@@ -461,15 +481,53 @@ class OwnerController extends Controller
             $photoPath = $this->uploadAndCompressImage($request->file('photo'), 'photos');
         }
 
-        Product::create([
-            'branch_id' => $request->branch_id,
-            'name' => $request->name,
-            'category' => $request->category,
-            'price' => $request->price,
-            'stock' => $request->stock,
-            'photo_path' => $photoPath,
-            'status' => 'active',
-        ]);
+        DB::transaction(function () use ($request, $photoPath) {
+            // Find existing global product by name and category
+            $product = Product::whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($request->name))])
+                ->whereRaw('LOWER(TRIM(category)) = ?', [strtolower(trim($request->category))])
+                ->first();
+
+            if (!$product) {
+                $product = Product::create([
+                    'name' => $request->name,
+                    'category' => $request->category,
+                    'price' => $request->price,
+                    'photo_path' => $photoPath,
+                    'status' => 'active',
+                ]);
+            } else {
+                $product->price = $request->price;
+                if ($photoPath) {
+                    $product->photo_path = $photoPath;
+                }
+                $product->status = 'active';
+                $product->save();
+            }
+
+            // Create or update stock for the selected branch
+            \App\Models\BranchProductStock::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'branch_id' => $request->branch_id,
+                ],
+                [
+                    'stock' => $request->stock,
+                ]
+            );
+
+            // Record initial stock mutation
+            ProductStockMutation::create([
+                'product_id' => $product->id,
+                'branch_id' => $request->branch_id,
+                'type' => 'in_restock',
+                'reference_id' => null,
+                'qty' => $request->stock,
+                'stock_before' => 0,
+                'stock_after' => $request->stock,
+                'notes' => 'Registrasi produk & stok awal',
+                'created_by' => auth()->id(),
+            ]);
+        });
 
         return back()->with('success', 'Produk retail berhasil didaftarkan.');
     }
@@ -477,11 +535,11 @@ class OwnerController extends Controller
     public function updateProduct(Request $request, Product $product)
     {
         $request->validate([
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'name' => 'required|string|max:100',
             'category' => 'required|string|max:50',
             'price' => 'required|numeric|min:0',
-            'stock' => 'required|integer|min:0',
+            'stock' => 'nullable|integer|min:0',
             'status' => 'required|in:active,inactive',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png',
         ]);
@@ -494,15 +552,51 @@ class OwnerController extends Controller
             $photoPath = $this->uploadAndCompressImage($request->file('photo'), 'photos');
         }
 
-        $product->update([
-            'branch_id' => $request->branch_id,
-            'name' => $request->name,
-            'category' => $request->category,
-            'price' => $request->price,
-            'stock' => $request->stock,
-            'status' => $request->status,
-            'photo_path' => $photoPath,
-        ]);
+        DB::transaction(function () use ($request, $product, $photoPath) {
+            $product->update([
+                'name' => $request->name,
+                'category' => $request->category,
+                'price' => $request->price,
+                'status' => $request->status,
+                'photo_path' => $photoPath,
+            ]);
+
+            // Update stock for this specific branch only if provided
+            if ($request->filled('branch_id') && $request->has('stock')) {
+                $stockRecord = \App\Models\BranchProductStock::where('product_id', $product->id)
+                    ->where('branch_id', $request->branch_id)
+                    ->first();
+
+                $stockBefore = $stockRecord ? $stockRecord->stock : 0;
+                $stockAfter = $request->stock;
+
+                \App\Models\BranchProductStock::updateOrCreate(
+                    [
+                        'product_id' => $product->id,
+                        'branch_id' => $request->branch_id,
+                    ],
+                    [
+                        'stock' => $stockAfter,
+                    ]
+                );
+
+                // If stock changed, record mutation
+                $diff = $stockAfter - $stockBefore;
+                if ($diff !== 0) {
+                    ProductStockMutation::create([
+                        'product_id' => $product->id,
+                        'branch_id' => $request->branch_id,
+                        'type' => $diff > 0 ? 'in_opname_correction' : 'out_opname_correction',
+                        'reference_id' => null,
+                        'qty' => abs($diff),
+                        'stock_before' => $stockBefore,
+                        'stock_after' => $stockAfter,
+                        'notes' => 'Koreksi stok via form edit produk',
+                        'created_by' => auth()->id(),
+                    ]);
+                }
+            }
+        });
 
         return back()->with('success', 'Produk retail berhasil diperbarui.');
     }
@@ -525,18 +619,28 @@ class OwnerController extends Controller
     public function restockProduct(Request $request, Product $product)
     {
         $request->validate([
+            'branch_id' => 'nullable|exists:branches,id',
             'qty' => 'required|integer|min:1',
             'notes' => 'nullable|string|max:255',
         ]);
 
-        DB::transaction(function () use ($request, $product) {
+        $branchId = $request->input('branch_id') ?? Branch::first()->id;
+
+        DB::transaction(function () use ($request, $product, $branchId) {
             $qty = $request->qty;
-            $stockBefore = $product->stock;
-            $product->increment('stock', $qty);
-            $stockAfter = $product->fresh()->stock;
+            
+            $stockRecord = \App\Models\BranchProductStock::firstOrCreate(
+                ['product_id' => $product->id, 'branch_id' => $branchId],
+                ['stock' => 0]
+            );
+
+            $stockBefore = $stockRecord->stock;
+            $stockRecord->increment('stock', $qty);
+            $stockAfter = $stockRecord->fresh()->stock;
 
             ProductStockMutation::create([
                 'product_id' => $product->id,
+                'branch_id' => $branchId,
                 'type' => 'in_restock',
                 'reference_id' => null,
                 'qty' => $qty,
@@ -556,24 +660,34 @@ class OwnerController extends Controller
     public function adjustProduct(Request $request, Product $product)
     {
         $request->validate([
+            'branch_id' => 'nullable|exists:branches,id',
             'actual_stock' => 'required|integer|min:0',
             'notes' => 'nullable|string|max:255',
         ]);
 
-        DB::transaction(function () use ($request, $product) {
+        $branchId = $request->input('branch_id') ?? Branch::first()->id;
+
+        DB::transaction(function () use ($request, $product, $branchId) {
             $actual = $request->actual_stock;
-            $stockBefore = $product->stock;
+
+            $stockRecord = \App\Models\BranchProductStock::firstOrCreate(
+                ['product_id' => $product->id, 'branch_id' => $branchId],
+                ['stock' => 0]
+            );
+
+            $stockBefore = $stockRecord->stock;
             $diff = $actual - $stockBefore;
 
             if ($diff === 0) {
                 return;
             }
 
-            $product->stock = $actual;
-            $product->save();
+            $stockRecord->stock = $actual;
+            $stockRecord->save();
 
             ProductStockMutation::create([
                 'product_id' => $product->id,
+                'branch_id' => $branchId,
                 'type' => $diff > 0 ? 'in_opname_correction' : 'out_opname_correction',
                 'reference_id' => null,
                 'qty' => abs($diff),
@@ -590,11 +704,18 @@ class OwnerController extends Controller
     /**
      * Get stock mutations history
      */
-    public function getProductMutations(Product $product)
+    public function getProductMutations(Request $request, Product $product)
     {
-        $mutations = ProductStockMutation::with('creator')
-            ->where('product_id', $product->id)
-            ->orderBy('created_at', 'desc')
+        $branchId = $request->query('branch_id');
+
+        $query = ProductStockMutation::with(['creator', 'branch'])
+            ->where('product_id', $product->id);
+
+        if ($branchId) {
+            $query->where('branch_id', $branchId);
+        }
+
+        $mutations = $query->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($m) {
                 $typeLabel = match ($m->type) {
@@ -615,11 +736,159 @@ class OwnerController extends Controller
                     'stock_after' => $m->stock_after,
                     'notes' => $m->notes ?? '-',
                     'operator' => $m->creator->name ?? 'Sistem',
+                    'branch_name' => $m->branch->name ?? '-',
                     'date' => $m->created_at->format('d M Y, H:i'),
                 ];
             });
 
         return response()->json(['mutations' => $mutations]);
+    }
+
+    /**
+     * Get products by branch
+     */
+    public function getProductsByBranch(Branch $branch)
+    {
+        $products = Product::whereNull('deleted_at')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($p) use ($branch) {
+                $stockRecord = \App\Models\BranchProductStock::where('product_id', $p->id)
+                    ->where('branch_id', $branch->id)
+                    ->first();
+                
+                $p->stock = $stockRecord ? $stockRecord->stock : 0;
+                return $p;
+            });
+
+        return response()->json(['products' => $products]);
+    }
+
+    /**
+     * Show bulk restock form
+     */
+    public function showRestockForm(): Response
+    {
+        $branches = Branch::whereNull('deleted_at')->get();
+        return Inertia::render('Owner/ProductsRestock', [
+            'branches' => $branches,
+        ]);
+    }
+
+    /**
+     * Store bulk restock
+     */
+    public function storeBulkRestock(Request $request)
+    {
+        $request->validate([
+            'branch_id' => 'required|exists:branches,id',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.qty' => 'required|integer|min:1',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request) {
+            foreach ($request->items as $item) {
+                $product = Product::findOrFail($item['product_id']);
+
+                $stockRecord = \App\Models\BranchProductStock::firstOrCreate(
+                    [
+                        'product_id' => $product->id,
+                        'branch_id' => $request->branch_id,
+                    ],
+                    [
+                        'stock' => 0,
+                    ]
+                );
+
+                $qty = $item['qty'];
+                $stockBefore = $stockRecord->stock;
+                $stockRecord->increment('stock', $qty);
+                $stockAfter = $stockRecord->fresh()->stock;
+
+                ProductStockMutation::create([
+                    'product_id' => $product->id,
+                    'branch_id' => $request->branch_id,
+                    'type' => 'in_restock',
+                    'reference_id' => null,
+                    'qty' => $qty,
+                    'stock_before' => $stockBefore,
+                    'stock_after' => $stockAfter,
+                    'notes' => $request->notes ?? 'Pencatatan stok masuk (Bulk Restock)',
+                    'created_by' => auth()->id(),
+                ]);
+            }
+        });
+
+        return redirect()->route('owner.products.index')->with('success', 'Bulk restock produk berhasil disimpan.');
+    }
+
+    /**
+     * Show bulk adjust form
+     */
+    public function showAdjustForm(): Response
+    {
+        $branches = Branch::whereNull('deleted_at')->get();
+        return Inertia::render('Owner/ProductsAdjust', [
+            'branches' => $branches,
+        ]);
+    }
+
+    /**
+     * Store bulk adjust
+     */
+    public function storeBulkAdjust(Request $request)
+    {
+        $request->validate([
+            'branch_id' => 'required|exists:branches,id',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.actual_stock' => 'required|integer|min:0',
+            'items.*.notes' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () use ($request) {
+            foreach ($request->items as $item) {
+                $product = Product::findOrFail($item['product_id']);
+
+                $stockRecord = \App\Models\BranchProductStock::firstOrCreate(
+                    [
+                        'product_id' => $product->id,
+                        'branch_id' => $request->branch_id,
+                    ],
+                    [
+                        'stock' => 0,
+                    ]
+                );
+
+                $actual = $item['actual_stock'];
+                $stockBefore = $stockRecord->stock;
+                $diff = $actual - $stockBefore;
+
+                if ($diff === 0) {
+                    continue;
+                }
+
+                $stockRecord->stock = $actual;
+                $stockRecord->save();
+
+                ProductStockMutation::create([
+                    'product_id' => $product->id,
+                    'branch_id' => $request->branch_id,
+                    'type' => $diff > 0 ? 'in_opname_correction' : 'out_opname_correction',
+                    'reference_id' => null,
+                    'qty' => abs($diff),
+                    'stock_before' => $stockBefore,
+                    'stock_after' => $actual,
+                    'notes' => $item['notes'] ?? 'Penyesuaian bulk stok opname',
+                    'created_by' => auth()->id(),
+                ]);
+            }
+        });
+
+        return redirect()->route('owner.products.index')->with('success', 'Koreksi stok opname berhasil disimpan.');
     }
 
     /**
@@ -804,7 +1073,10 @@ class OwnerController extends Controller
      */
     public function getPayouts(Barber $barber, CommissionService $commissionService)
     {
-        $payouts = $commissionService->getPayoutsForBarber($barber->id)->map(function ($p) {
+        $payouts = $commissionService->getPayoutsForBarber($barber->id);
+        $payouts->load(['paidBy', 'commissionRecords.transaction.booking.service']);
+
+        $mappedPayouts = $payouts->map(function ($p) {
             return [
                 'id' => $p->id,
                 'payout_amount' => (float) $p->payout_amount,
@@ -813,9 +1085,20 @@ class OwnerController extends Controller
                 'notes' => $p->notes ?? '-',
                 'paid_by_name' => $p->paidBy->name,
                 'paid_at' => $p->paid_at->format('d M Y, H:i'),
+                'records' => $p->commissionRecords->map(function ($rec) {
+                    return [
+                        'id' => $rec->id,
+                        'invoice_number' => $rec->transaction->invoice_number ?? '-',
+                        'service_name' => $rec->transaction->booking->service->name ?? 'Layanan',
+                        'service_amount' => (float) $rec->service_amount,
+                        'percentage' => (float) $rec->percentage,
+                        'commission_amount' => (float) $rec->commission_amount,
+                        'date' => $rec->created_at->format('d M Y, H:i'),
+                    ];
+                }),
             ];
         });
-        return response()->json(['payouts' => $payouts]);
+        return response()->json(['payouts' => $mappedPayouts]);
     }
 
     /**
@@ -920,5 +1203,69 @@ class OwnerController extends Controller
         }
         
         return $path;
+    }
+
+    /**
+     * Show owner transaction history across all branches.
+     */
+    public function transactionsIndex(Request $request, \App\Services\TransactionService $transactionService): Response
+    {
+        $filters = $request->only(['branch_id', 'date_start', 'date_end', 'search', 'payment_type']);
+        $branches = Branch::whereNull('deleted_at')->get();
+
+        $transactions = $transactionService->getFilteredTransactions($filters)->map(function ($tx) {
+            $branchName = '-';
+            if ($tx->booking) {
+                $branchName = $tx->booking->branch->name ?? '-';
+            } elseif ($tx->cashier) {
+                $branchName = $tx->cashier->branch->name ?? '-';
+            }
+            return [
+                'id' => $tx->id,
+                'uuid' => $tx->uuid,
+                'invoice_number' => $tx->invoice_number,
+                'payment_type' => strtoupper($tx->payment_type),
+                'total_service' => (float) $tx->total_service,
+                'total_product' => (float) $tx->total_product,
+                'grand_total' => (float) $tx->grand_total,
+                'created_at' => $tx->created_at->format('d M Y, H:i'),
+                'cashier_name' => $tx->cashier->name ?? 'System',
+                'branch_name' => $branchName,
+                'customer_name' => $tx->booking ? ($tx->booking->customer ? $tx->booking->customer->name : $tx->booking->guest_name) : 'Walk-in',
+                'barber_name' => $tx->booking ? ($tx->booking->barber->user->name ?? '-') : '-',
+            ];
+        });
+
+        return Inertia::render('Owner/Transactions', [
+            'transactions' => $transactions,
+            'branches' => $branches,
+            'filters' => $filters,
+        ]);
+    }
+
+    /**
+     * Show owner transaction receipt page.
+     */
+    public function receipt(string $uuid, \App\Services\TransactionService $transactionService): Response
+    {
+        $details = $transactionService->getReceiptDetails($uuid);
+        $tx = $details['transaction'];
+        $branch = $tx->booking ? $tx->booking->branch : ($tx->cashier ? $tx->cashier->branch : null);
+
+        return Inertia::render('Cashier/Receipt', [
+            'transaction' => [
+                'invoice_number' => $tx->invoice_number,
+                'payment_type' => strtoupper($tx->payment_type),
+                'total_service' => (float) $tx->total_service,
+                'total_product' => (float) $tx->total_product,
+                'grand_total' => (float) $tx->grand_total,
+                'created_at' => $tx->created_at->format('d M Y, H:i'),
+                'cashier_name' => $tx->cashier->name ?? 'System',
+                'customer_name' => $tx->booking ? ($tx->booking->customer ? $tx->booking->customer->name : $tx->booking->guest_name) : 'Walk-in',
+                'barber_name' => $tx->booking ? ($tx->booking->barber->user->name ?? '-') : '-',
+            ],
+            'items' => $details['items'],
+            'branch' => $branch,
+        ]);
     }
 }

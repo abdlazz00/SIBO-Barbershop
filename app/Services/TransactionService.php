@@ -87,15 +87,21 @@ class TransactionService
 
         if (!empty($data['products']) && is_array($data['products'])) {
             foreach ($data['products'] as $pItem) {
-                // Fetch product with lock
-                $product = Product::lockForUpdate()->findOrFail($pItem['id']);
+                // Fetch product info
+                $product = Product::findOrFail($pItem['id']);
 
-                if ((int) $product->branch_id !== (int) $branchId) {
-                    throw new Exception("Produk {$product->name} tidak berada di cabang Anda.");
+                // Fetch and lock stock for this specific branch
+                $branchStock = \App\Models\BranchProductStock::where('product_id', $product->id)
+                    ->where('branch_id', $branchId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$branchStock) {
+                    throw new Exception("Produk {$product->name} tidak terdaftar di cabang Anda.");
                 }
 
-                if ($product->stock < $pItem['qty']) {
-                    throw new Exception("Stok produk {$product->name} tidak mencukupi (Tersisa: {$product->stock}).");
+                if ($branchStock->stock < $pItem['qty']) {
+                    throw new Exception("Stok produk {$product->name} tidak mencukupi (Tersisa: {$branchStock->stock}).");
                 }
 
                 $subtotal = (float) ($product->price * $pItem['qty']);
@@ -116,7 +122,7 @@ class TransactionService
 
         $grandTotal = $totalService + $totalProduct;
 
-        return DB::transaction(function () use ($booking, $totalService, $totalProduct, $grandTotal, $itemsToSell, $data, $cashierId) {
+        return DB::transaction(function () use ($booking, $totalService, $totalProduct, $grandTotal, $itemsToSell, $data, $cashierId, $branchId) {
             $datePrefix = Carbon::now()->format('Ymd');
             $todayTxCount = $this->transactionRepo->all()->filter(function ($tx) {
                 return $tx->created_at->isToday();
@@ -158,12 +164,18 @@ class TransactionService
                 ]);
 
                 // Decrement stock and record mutation
-                $stockBefore = $sell['product']->stock;
-                $sell['product']->decrement('stock', $sell['qty']);
-                $stockAfter = $sell['product']->fresh()->stock;
+                $branchStock = \App\Models\BranchProductStock::where('product_id', $sell['product']->id)
+                    ->where('branch_id', $branchId)
+                    ->lockForUpdate()
+                    ->first();
+
+                $stockBefore = $branchStock->stock;
+                $branchStock->decrement('stock', $sell['qty']);
+                $stockAfter = $branchStock->fresh()->stock;
 
                 ProductStockMutation::create([
                     'product_id' => $sell['product']->id,
+                    'branch_id' => $branchId,
                     'type' => 'out_sale',
                     'reference_id' => $transaction->id,
                     'qty' => $sell['qty'],
@@ -202,7 +214,7 @@ class TransactionService
         $transaction = $this->transactionRepo->findByUuid($uuid, [
             'booking.service',
             'booking.barber.user',
-            'cashier.user',
+            'cashier',
             'booking.customer'
         ]);
 
@@ -226,5 +238,13 @@ class TransactionService
             'transaction' => $transaction,
             'items' => $items,
         ];
+    }
+
+    /**
+     * Get filtered transaction list.
+     */
+    public function getFilteredTransactions(array $filters)
+    {
+        return $this->transactionRepo->getFilteredTransactions($filters);
     }
 }

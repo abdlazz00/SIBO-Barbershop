@@ -228,9 +228,9 @@ export default function POS({ booking, products = [] }) {
                                                     <button
                                                         type="button"
                                                         onClick={() => removeFromCart(item.id)}
-                                                        className="text-status-danger hover:text-red-600 p-1"
+                                                        className="text-status-danger hover:text-red-600 p-1 text-xs font-medium"
                                                     >
-                                                        🗑
+                                                        Hapus
                                                     </button>
                                                 </div>
                                             </div>

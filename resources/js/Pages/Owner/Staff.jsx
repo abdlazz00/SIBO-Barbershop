@@ -101,7 +101,7 @@ export default function Staff({ staff = [], branches = [] }) {
                         onClick={openCreateModal}
                         className="btn-accent px-5 py-2.5 flex items-center space-x-2 text-xs font-bold"
                     >
-                        <span>➕ TAMBAH STAFF</span>
+                        <span>TAMBAH STAFF</span>
                     </button>
                 </div>
             }

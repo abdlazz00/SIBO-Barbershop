@@ -18,9 +18,23 @@ export default function AuthenticatedLayout({ header, children }) {
         return false;
     });
 
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [mobileOpenMenus, setMobileOpenMenus] = useState({});
+
     useEffect(() => {
         localStorage.setItem('sidebar-collapsed', collapsed);
     }, [collapsed]);
+
+    useEffect(() => {
+        const initialOpen = {};
+        const items = getMenuItems();
+        items.forEach((item, idx) => {
+            if (item.subItems && item.subItems.some(sub => sub.active)) {
+                initialOpen[idx] = true;
+            }
+        });
+        setMobileOpenMenus(initialOpen);
+    }, [user.role]);
 
     // Sidebar menu items based on role
     const getMenuItems = () => {
@@ -58,14 +72,34 @@ export default function AuthenticatedLayout({ header, children }) {
                     )
                 },
                 {
-                    label: 'Produk',
-                    href: route('owner.products.index'),
-                    active: route().current('owner.products.index'),
+                    label: 'Inventory',
                     icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
                         </svg>
-                    )
+                    ),
+                    subItems: [
+                        {
+                            label: 'Produk',
+                            href: route('owner.products.index'),
+                            active: route().current('owner.products.index')
+                        },
+                        {
+                            label: 'Stok Masuk',
+                            href: route('owner.products.restock.form'),
+                            active: route().current('owner.products.restock.form')
+                        },
+                        {
+                            label: 'Stok Opname',
+                            href: route('owner.products.adjust.form'),
+                            active: route().current('owner.products.adjust.form')
+                        },
+                        {
+                            label: 'Riwayat Transaksi',
+                            href: route('owner.transactions.index'),
+                            active: route().current('owner.transactions.index')
+                        }
+                    ]
                 },
                 {
                     label: 'Jadwal',
@@ -101,14 +135,49 @@ export default function AuthenticatedLayout({ header, children }) {
                     )
                 },
                 {
-                    label: 'POS Transaksi',
-                    href: route('cashier.pos.index'),
-                    active: route().current('cashier.pos.index') || route().current('cashier.transactions.*'),
+                    label: 'POS & Transaksi',
                     icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
                         </svg>
-                    )
+                    ),
+                    subItems: [
+                        {
+                            label: 'POS Checkout',
+                            href: route('cashier.pos.index'),
+                            active: route().current('cashier.pos.index') || route().current('cashier.transactions.receipt')
+                        },
+                        {
+                            label: 'Riwayat Transaksi',
+                            href: route('cashier.transactions.index'),
+                            active: route().current('cashier.transactions.index')
+                        }
+                    ]
+                },
+                {
+                    label: 'Inventory',
+                    icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                        </svg>
+                    ),
+                    subItems: [
+                        {
+                            label: 'Produk & Stok',
+                            href: route('cashier.products.index'),
+                            active: route().current('cashier.products.index')
+                        },
+                        {
+                            label: 'Stok Masuk',
+                            href: route('cashier.products.restock.form'),
+                            active: route().current('cashier.products.restock.form')
+                        },
+                        {
+                            label: 'Stok Opname',
+                            href: route('cashier.products.adjust.form'),
+                            active: route().current('cashier.products.adjust.form')
+                        }
+                    ]
                 }
             ];
         } else if (user.role === 'barber') {
@@ -120,6 +189,16 @@ export default function AuthenticatedLayout({ header, children }) {
                     icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.375M9 18h3.375m-6.375-3h.008v.008H6V15Zm0 3h.008v.008H6V18Zm0-6h.008v.008H6V12m-.008-6h.008v.008H6V6Zm6 0h.008v.008h-.008V6Zm0 3h.008v.008h-.008V9Zm6 3h.008v.008h-.008V12Zm0 3h.008v.008h-.008V15Zm0 3h.008v.008h-.008V18Zm0-12h.008v.008h-.008V6Zm-9 3h.008v.008H6V9Zm6 0h.008v.008h-.008V9Z" />
+                        </svg>
+                    )
+                },
+                {
+                    label: 'Jadwal Saya',
+                    href: route('barber.schedules.index'),
+                    active: route().current('barber.schedules.index'),
+                    icon: (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
                         </svg>
                     )
                 },
@@ -201,19 +280,161 @@ export default function AuthenticatedLayout({ header, children }) {
                 onToggleCollapse={() => setCollapsed(!collapsed)}
             />
 
+            {/* Mobile Drawer Backdrop */}
+            {mobileMenuOpen && (
+                <div 
+                    onClick={() => setMobileMenuOpen(false)} 
+                    className="fixed inset-0 z-50 bg-[#150B35]/60 backdrop-blur-sm lg:hidden transition-opacity duration-300"
+                />
+            )}
+
+            {/* Mobile Slide-out Drawer */}
+            <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#1F134D] text-white flex flex-col justify-between border-r border-[#2d1b69] transition-transform duration-300 ease-in-out lg:hidden select-none ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
+                    {/* Brand / Logo & Close Button */}
+                    <div className="flex items-center justify-between px-6 mb-6">
+                        <span className="font-display font-bold text-xl tracking-tight text-white">
+                             HOWELL<span className="text-accent-lime">.</span>
+                        </span>
+                        <button
+                            onClick={() => setMobileMenuOpen(false)}
+                            className="p-1.5 rounded-lg bg-[#2D1B69] hover:bg-[#3D2880] text-[#C5B8E0] hover:text-white transition duration-200 cursor-pointer"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* Mobile Navigation Items */}
+                    <nav className="mt-5 flex-1 px-4 space-y-1 bg-[#1F134D]">
+                        {menuItems.map((item, idx) => {
+                            if (item.subItems) {
+                                const isParentActive = item.subItems.some(sub => sub.active);
+                                const isOpen = !!mobileOpenMenus[idx];
+
+                                return (
+                                    <div key={idx} className="space-y-1">
+                                        <button
+                                            onClick={() => setMobileOpenMenus(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                            className={`w-full group flex items-center justify-between px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 relative cursor-pointer ${
+                                                isParentActive
+                                                    ? 'bg-[#2D1B69] text-accent-lime shadow-lg shadow-[#150b35]/20'
+                                                    : 'text-[#C5B8E0] hover:bg-[#2D1B69]/50 hover:text-white'
+                                            }`}
+                                        >
+                                            <div className="flex items-center">
+                                                <div className="flex items-center justify-center shrink-0 mr-3">
+                                                    {item.icon}
+                                                </div>
+                                                <span className="text-left font-medium">
+                                                    {item.label}
+                                                </span>
+                                            </div>
+
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={2.5}
+                                                stroke="currentColor"
+                                                className={`w-3.5 h-3.5 transition-transform duration-200 text-[#C5B8E0] group-hover:text-white ${isOpen ? 'rotate-180' : ''}`}
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                            </svg>
+                                        </button>
+
+                                        {isOpen && (
+                                            <div className="pl-8 space-y-1 transition-all duration-300">
+                                                {item.subItems.map((sub, sIdx) => (
+                                                    <Link
+                                                        key={sIdx}
+                                                        href={sub.href}
+                                                        onClick={() => setMobileMenuOpen(false)}
+                                                        className={`block px-3 py-2 text-xs font-medium rounded-md transition duration-150 ${
+                                                            sub.active
+                                                                ? 'text-accent-lime bg-[#2D1B69]/30 font-semibold'
+                                                                : 'text-[#C5B8E0] hover:text-white hover:bg-[#2D1B69]/20'
+                                                        }`}
+                                                    >
+                                                        {sub.label}
+                                                    </Link>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <Link
+                                    key={idx}
+                                    href={item.href}
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className={`group flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 relative ${
+                                        item.active
+                                            ? 'bg-[#2D1B69] text-accent-lime shadow-lg shadow-[#150b35]/20'
+                                            : 'text-[#C5B8E0] hover:bg-[#2D1B69]/50 hover:text-white'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-center shrink-0 mr-3">
+                                        {item.icon}
+                                    </div>
+                                    <span className="font-medium">{item.label}</span>
+                                </Link>
+                            );
+                        })}
+                    </nav>
+                </div>
+                
+                {/* Mobile Drawer User Footer */}
+                <div className="p-4 border-t border-[#2d1b69] bg-[#1a0f3d]">
+                    <div className="flex items-center space-x-3 mb-4">
+                        <div className="w-10 h-10 rounded-full bg-[#7C5CBF] flex items-center justify-center font-bold text-sm text-white shadow">
+                            {user.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                        </div>
+                        <div className="text-left">
+                            <h4 className="font-semibold text-sm leading-none text-white">{user.name}</h4>
+                            <span className="text-[10px] text-[#C5B8E0] font-bold uppercase tracking-wider block mt-0.5">{user.role}</span>
+                        </div>
+                    </div>
+                    <Link
+                        href={route('logout')}
+                        method="post"
+                        as="button"
+                        className="w-full flex items-center justify-center space-x-2 py-2 px-4 rounded-lg bg-[#2D1B69] hover:bg-[#3D2880] text-white font-medium text-xs transition duration-200 cursor-pointer"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+                        </svg>
+                        <span>Keluar</span>
+                    </Link>
+                </div>
+            </div>
+
             {/* Main Area */}
             <div className="flex-1 flex flex-col min-w-0 bg-surface-canvas-light text-ink overflow-hidden h-screen">
                 {/* Global Topbar Header */}
                 <header className="bg-white border-b border-hairline-cloud shrink-0 sticky top-0 z-40 h-16 flex items-center justify-between px-6 sm:px-8">
-                    {/* Left: Breadcrumbs or section path */}
+                    {/* Left: Mobile hamburger menu toggle & Breadcrumbs */}
                     <div className="flex items-center space-x-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-on-light-muted">
-                            {user.role}
-                        </span>
-                        <span className="text-xs text-on-light-faint">/</span>
-                        <span className="text-xs font-semibold text-ink-deep capitalize">
-                            {route().current() ? route().current().split('.').slice(-1)[0] : 'dashboard'}
-                        </span>
+                        <button
+                            onClick={() => setMobileMenuOpen(true)}
+                            className="lg:hidden mr-2.5 p-1.5 rounded-lg hover:bg-surface-press-light text-on-light-muted hover:text-primary transition duration-200 cursor-pointer focus:outline-none"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                            </svg>
+                        </button>
+                        <div className="flex items-center space-x-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-on-light-muted">
+                                {user.role}
+                            </span>
+                            <span className="text-xs text-on-light-faint">/</span>
+                            <span className="text-xs font-semibold text-ink-deep capitalize">
+                                {route().current() ? route().current().split('.').slice(-1)[0] : 'dashboard'}
+                            </span>
+                        </div>
                     </div>
 
                     {/* Right: Notifications & Profile Dropdown */}

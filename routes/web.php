@@ -71,6 +71,11 @@ Route::middleware(['auth', 'role:owner'])->group(function () {
 
     // Products CRUD
     Route::get('/owner/products', [OwnerController::class, 'listProducts'])->name('owner.products.index');
+    Route::get('/owner/products/branch/{branch}', [OwnerController::class, 'getProductsByBranch'])->name('owner.products.by_branch');
+    Route::get('/owner/products/restock', [OwnerController::class, 'showRestockForm'])->name('owner.products.restock.form');
+    Route::post('/owner/products/restock', [OwnerController::class, 'storeBulkRestock'])->name('owner.products.restock.bulk');
+    Route::get('/owner/products/adjust', [OwnerController::class, 'showAdjustForm'])->name('owner.products.adjust.form');
+    Route::post('/owner/products/adjust', [OwnerController::class, 'storeBulkAdjust'])->name('owner.products.adjust.bulk');
     Route::post('/owner/products', [OwnerController::class, 'storeProduct'])->name('owner.products.store');
     Route::patch('/owner/products/{product}', [OwnerController::class, 'updateProduct'])->name('owner.products.update');
     Route::delete('/owner/products/{product}', [OwnerController::class, 'deleteProduct'])->name('owner.products.destroy');
@@ -89,6 +94,10 @@ Route::middleware(['auth', 'role:owner'])->group(function () {
     Route::get('/owner/commissions/{barber}/unpaid', [OwnerController::class, 'getUnpaidCommissions'])->name('owner.commissions.unpaid');
     Route::get('/owner/commissions/{barber}/payouts', [OwnerController::class, 'getPayouts'])->name('owner.commissions.payouts');
     Route::post('/owner/commissions/{barber}/payout', [OwnerController::class, 'storePayout'])->name('owner.commissions.payout.store');
+
+    // Transactions History
+    Route::get('/owner/transactions', [OwnerController::class, 'transactionsIndex'])->name('owner.transactions.index');
+    Route::get('/owner/transactions/{transaction}/receipt', [OwnerController::class, 'receipt'])->name('owner.transactions.receipt');
 });
 
 Route::middleware(['auth', 'role:cashier'])->group(function () {
@@ -99,11 +108,28 @@ Route::middleware(['auth', 'role:cashier'])->group(function () {
     Route::get('/cashier/pos/{booking?}', [CashierController::class, 'posIndex'])->name('cashier.pos.index');
     Route::post('/cashier/pos/checkout', [CashierController::class, 'checkout'])->name('cashier.pos.checkout');
     Route::get('/cashier/transactions/{transaction}/receipt', [CashierController::class, 'receipt'])->name('cashier.transactions.receipt');
+    Route::get('/cashier/transactions', [CashierController::class, 'transactionsIndex'])->name('cashier.transactions.index');
+
+    // Cashier Inventory CRUD & Operations
+    Route::get('/cashier/products', [CashierController::class, 'listProducts'])->name('cashier.products.index');
+    Route::post('/cashier/products', [CashierController::class, 'storeProduct'])->name('cashier.products.store');
+    Route::patch('/cashier/products/{product}', [CashierController::class, 'updateProduct'])->name('cashier.products.update');
+    Route::delete('/cashier/products/{product}', [CashierController::class, 'deleteProduct'])->name('cashier.products.destroy');
+    Route::get('/cashier/products/restock', [CashierController::class, 'showRestockForm'])->name('cashier.products.restock.form');
+    Route::post('/cashier/products/restock', [CashierController::class, 'storeBulkRestock'])->name('cashier.products.restock.bulk');
+    Route::get('/cashier/products/adjust', [CashierController::class, 'showAdjustForm'])->name('cashier.products.adjust.form');
+    Route::post('/cashier/products/adjust', [CashierController::class, 'storeBulkAdjust'])->name('cashier.products.adjust.bulk');
+    Route::post('/cashier/products/{product}/restock', [CashierController::class, 'restockProduct'])->name('cashier.products.restock');
+    Route::post('/cashier/products/{product}/adjust', [CashierController::class, 'adjustProduct'])->name('cashier.products.adjust');
+    Route::get('/cashier/products/{product}/mutations', [CashierController::class, 'getProductMutations'])->name('cashier.products.mutations');
 });
 
 Route::middleware(['auth', 'role:barber'])->group(function () {
     Route::get('/barber/dashboard', [BarberController::class, 'dashboard'])->name('barber.dashboard');
     Route::get('/barber/commissions', [BarberController::class, 'commissions'])->name('barber.commissions.index');
+    Route::get('/barber/commissions/payouts', [BarberController::class, 'getPayouts'])->name('barber.commissions.payouts');
+    Route::get('/barber/schedules', [BarberController::class, 'listSchedules'])->name('barber.schedules.index');
+    Route::get('/barber/schedules/data', [BarberController::class, 'getSchedulesData'])->name('barber.schedules.data');
 });
 
 Route::middleware('auth')->group(function () {

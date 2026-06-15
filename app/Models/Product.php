@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-#[Fillable(['branch_id', 'name', 'category', 'price', 'stock', 'photo_path', 'status'])]
+#[Fillable(['name', 'category', 'price', 'photo_path', 'status'])]
 class Product extends Model
 {
     use HasFactory, SoftDeletes;
@@ -26,9 +26,19 @@ class Product extends Model
     /**
      * Relasi ke Branch (Cabang tempat produk dijual)
      */
-    public function branch(): BelongsTo
+    public function branches()
     {
-        return $this->belongsTo(Branch::class, 'branch_id');
+        return $this->belongsToMany(Branch::class, 'branch_product_stocks')
+            ->withPivot('stock')
+            ->withTimestamps();
+    }
+
+    /**
+     * Relasi ke BranchProductStock
+     */
+    public function branchStocks()
+    {
+        return $this->hasMany(BranchProductStock::class, 'product_id');
     }
 
     /**

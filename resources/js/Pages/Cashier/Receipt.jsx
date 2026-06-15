@@ -29,7 +29,7 @@ export default function Receipt({ transaction, items = [], branch }) {
                             onClick={handlePrint}
                             className="btn-accent px-5 py-2.5 text-xs font-bold shadow-md"
                         >
-                            🖨️ CETAK NOTA
+                            CETAK NOTA
                         </button>
                     </div>
                 </div>

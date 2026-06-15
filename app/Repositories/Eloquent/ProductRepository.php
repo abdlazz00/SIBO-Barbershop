@@ -14,9 +14,12 @@ class ProductRepository extends BaseRepository implements ProductRepositoryInter
 
     public function getActiveProductsByBranch(int $branchId)
     {
-        return $this->model->where('branch_id', $branchId)
-            ->where('status', 'active')
-            ->where('stock', '>', 0)
+        return $this->model->newQuery()
+            ->join('branch_product_stocks', 'products.id', '=', 'branch_product_stocks.product_id')
+            ->where('branch_product_stocks.branch_id', $branchId)
+            ->where('products.status', 'active')
+            ->where('branch_product_stocks.stock', '>', 0)
+            ->select('products.*', 'branch_product_stocks.stock')
             ->get();
     }
 }

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Branch;
 use App\Models\Product;
 use App\Models\ProductStockMutation;
+use App\Models\BranchProductStock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -39,12 +40,16 @@ class ProductStockTest extends TestCase
         ]);
 
         $this->product = Product::create([
-            'branch_id' => $this->branch->id,
             'name' => 'Pomade Classic',
             'category' => 'Pomade',
             'price' => 120000.00,
-            'stock' => 10,
             'status' => 'active',
+        ]);
+
+        BranchProductStock::create([
+            'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
+            'stock' => 10,
         ]);
     }
 
@@ -52,6 +57,7 @@ class ProductStockTest extends TestCase
     {
         $response = $this->actingAs($this->owner)
             ->post(route('owner.products.restock', $this->product->id), [
+                'branch_id' => $this->branch->id,
                 'qty' => 15,
                 'notes' => 'Received from supplier A',
             ]);
@@ -60,12 +66,15 @@ class ProductStockTest extends TestCase
         $response->assertSessionHasNoErrors();
 
         // Check stock updated
-        $this->product->refresh();
-        $this->assertEquals(25, $this->product->stock);
+        $stock = BranchProductStock::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->value('stock');
+        $this->assertEquals(25, $stock);
 
         // Check mutation recorded
         $this->assertDatabaseHas('product_stock_mutations', [
             'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
             'type' => 'in_restock',
             'qty' => 15,
             'stock_before' => 10,
@@ -79,6 +88,7 @@ class ProductStockTest extends TestCase
     {
         $response = $this->actingAs($this->owner)
             ->post(route('owner.products.adjust', $this->product->id), [
+                'branch_id' => $this->branch->id,
                 'actual_stock' => 12,
                 'notes' => 'Stock opname adjustment',
             ]);
@@ -87,12 +97,15 @@ class ProductStockTest extends TestCase
         $response->assertSessionHasNoErrors();
 
         // Check stock updated
-        $this->product->refresh();
-        $this->assertEquals(12, $this->product->stock);
+        $stock = BranchProductStock::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->value('stock');
+        $this->assertEquals(12, $stock);
 
         // Check mutation recorded
         $this->assertDatabaseHas('product_stock_mutations', [
             'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
             'type' => 'in_opname_correction',
             'qty' => 2, // 12 - 10 = +2
             'stock_before' => 10,
@@ -106,6 +119,7 @@ class ProductStockTest extends TestCase
     {
         $response = $this->actingAs($this->owner)
             ->post(route('owner.products.adjust', $this->product->id), [
+                'branch_id' => $this->branch->id,
                 'actual_stock' => 7,
                 'notes' => 'Broken display item',
             ]);
@@ -114,12 +128,15 @@ class ProductStockTest extends TestCase
         $response->assertSessionHasNoErrors();
 
         // Check stock updated
-        $this->product->refresh();
-        $this->assertEquals(7, $this->product->stock);
+        $stock = BranchProductStock::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->value('stock');
+        $this->assertEquals(7, $stock);
 
         // Check mutation recorded
         $this->assertDatabaseHas('product_stock_mutations', [
             'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
             'type' => 'out_opname_correction',
             'qty' => 3, // 10 - 7 = -3
             'stock_before' => 10,
@@ -134,6 +151,7 @@ class ProductStockTest extends TestCase
         // Create a mutation
         ProductStockMutation::create([
             'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
             'type' => 'in_restock',
             'qty' => 5,
             'stock_before' => 10,
@@ -150,5 +168,116 @@ class ProductStockTest extends TestCase
         $response->assertJsonPath('mutations.0.type_label', 'Stok Masuk (Restock)');
         $response->assertJsonPath('mutations.0.qty', 5);
         $response->assertJsonPath('mutations.0.operator', $this->owner->name);
+    }
+
+    public function test_owner_can_fetch_products_by_branch()
+    {
+        $response = $this->actingAs($this->owner)
+            ->get(route('owner.products.by_branch', $this->branch->id));
+
+        $response->assertStatus(200);
+        $response->assertJsonCount(1, 'products');
+        $response->assertJsonPath('products.0.name', 'Pomade Classic');
+    }
+
+    public function test_owner_can_restock_products_in_bulk()
+    {
+        $product2 = Product::create([
+            'name' => 'Hair Tonic Lavender',
+            'category' => 'Vitamin',
+            'price' => 95000.00,
+            'status' => 'active',
+        ]);
+
+        BranchProductStock::create([
+            'product_id' => $product2->id,
+            'branch_id' => $this->branch->id,
+            'stock' => 5,
+        ]);
+
+        $response = $this->actingAs($this->owner)
+            ->post(route('owner.products.restock.bulk'), [
+                'branch_id' => $this->branch->id,
+                'items' => [
+                    ['product_id' => $this->product->id, 'qty' => 5],
+                    ['product_id' => $product2->id, 'qty' => 10],
+                ],
+                'notes' => 'Bulk supply arrival',
+            ]);
+
+        $response->assertRedirect(route('owner.products.index'));
+        $response->assertSessionHasNoErrors();
+
+        // Check stocks updated
+        $stock1 = BranchProductStock::where('product_id', $this->product->id)->where('branch_id', $this->branch->id)->value('stock');
+        $stock2 = BranchProductStock::where('product_id', $product2->id)->where('branch_id', $this->branch->id)->value('stock');
+        $this->assertEquals(15, $stock1);
+        $this->assertEquals(15, $stock2);
+
+        // Check mutations written
+        $this->assertDatabaseHas('product_stock_mutations', [
+            'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
+            'type' => 'in_restock',
+            'qty' => 5,
+            'notes' => 'Bulk supply arrival',
+        ]);
+        $this->assertDatabaseHas('product_stock_mutations', [
+            'product_id' => $product2->id,
+            'branch_id' => $this->branch->id,
+            'type' => 'in_restock',
+            'qty' => 10,
+            'notes' => 'Bulk supply arrival',
+        ]);
+    }
+
+    public function test_owner_can_adjust_products_in_bulk()
+    {
+        $product2 = Product::create([
+            'name' => 'Hair Tonic Lavender',
+            'category' => 'Vitamin',
+            'price' => 95000.00,
+            'status' => 'active',
+        ]);
+
+        BranchProductStock::create([
+            'product_id' => $product2->id,
+            'branch_id' => $this->branch->id,
+            'stock' => 5,
+        ]);
+
+        $response = $this->actingAs($this->owner)
+            ->post(route('owner.products.adjust.bulk'), [
+                'branch_id' => $this->branch->id,
+                'items' => [
+                    ['product_id' => $this->product->id, 'actual_stock' => 8, 'notes' => 'Damaged display case'], // -2 diff
+                    ['product_id' => $product2->id, 'actual_stock' => 7, 'notes' => 'Found misplaced boxes'], // +2 diff
+                ],
+            ]);
+
+        $response->assertRedirect(route('owner.products.index'));
+        $response->assertSessionHasNoErrors();
+
+        // Check stocks updated
+        $stock1 = BranchProductStock::where('product_id', $this->product->id)->where('branch_id', $this->branch->id)->value('stock');
+        $stock2 = BranchProductStock::where('product_id', $product2->id)->where('branch_id', $this->branch->id)->value('stock');
+        $this->assertEquals(8, $stock1);
+        $this->assertEquals(7, $stock2);
+
+        // Check mutations written
+        $this->assertDatabaseHas('product_stock_mutations', [
+            'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
+            'type' => 'out_opname_correction',
+            'qty' => 2,
+            'notes' => 'Damaged display case',
+        ]);
+        $this->assertDatabaseHas('product_stock_mutations', [
+            'product_id' => $product2->id,
+            'branch_id' => $this->branch->id,
+            'type' => 'in_opname_correction',
+            'qty' => 2,
+            'notes' => 'Found misplaced boxes',
+        ]);
     }
 }

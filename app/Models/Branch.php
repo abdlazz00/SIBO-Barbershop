@@ -34,9 +34,19 @@ class Branch extends Model
     /**
      * Relasi ke products di cabang ini
      */
-    public function products(): HasMany
+    public function products()
     {
-        return $this->hasMany(Product::class, 'branch_id');
+        return $this->belongsToMany(Product::class, 'branch_product_stocks')
+            ->withPivot('stock')
+            ->withTimestamps();
+    }
+
+    /**
+     * Relasi ke BranchProductStock
+     */
+    public function productStocks(): HasMany
+    {
+        return $this->hasMany(BranchProductStock::class, 'branch_id');
     }
 
     /**

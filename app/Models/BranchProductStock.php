@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['product_id', 'branch_id', 'type', 'reference_id', 'qty', 'stock_before', 'stock_after', 'notes', 'created_by'])]
-class ProductStockMutation extends Model
+#[Fillable(['product_id', 'branch_id', 'stock'])]
+class BranchProductStock extends Model
 {
+    protected $table = 'branch_product_stocks';
+
     /**
      * Relasi ke Product
      */
@@ -23,13 +25,5 @@ class ProductStockMutation extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class, 'branch_id');
-    }
-
-    /**
-     * Relasi ke User (Staff/Owner yang menginput)
-     */
-    public function creator(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
     }
 }

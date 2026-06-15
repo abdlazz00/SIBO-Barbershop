@@ -145,13 +145,13 @@ export default function Services({ services = [], barbers = [], overrides = [] }
                             onClick={() => setShowOverrideModal(true)}
                             className="px-4 py-2.5 border border-hairline-cool text-accent-violet rounded text-xs font-semibold hover:bg-surface-card"
                         >
-                            🏷️ OVERRIDE HARGA BARBER
+                            OVERRIDE HARGA BARBER
                         </button>
                         <button
                             onClick={openCreateModal}
                             className="btn-accent px-5 py-2.5 text-xs font-bold shadow-md"
                         >
-                            ➕ TAMBAH LAYANAN
+                            TAMBAH LAYANAN
                         </button>
                     </div>
                 </div>
