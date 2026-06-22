@@ -7,7 +7,94 @@ import { Link, usePage } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 
 export default function AuthenticatedLayout({ header, children }) {
-    const user = usePage().props.auth.user;
+    const { auth } = usePage().props;
+    const user = auth.user;
+    const branches = auth.branches || [];
+
+    const [notifications, setNotifications] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem(`notifications_${user.id}`);
+            return saved ? JSON.parse(saved) : [];
+        }
+        return [];
+    });
+
+    const [unreadCount, setUnreadCount] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem(`notifications_${user.id}`);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return parsed.filter(n => !n.read).length;
+            }
+        }
+        return 0;
+    });
+
+    const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(`notifications_${user.id}`, JSON.stringify(notifications));
+            setUnreadCount(notifications.filter(n => !n.read).length);
+        }
+    }, [notifications, user.id]);
+
+    useEffect(() => {
+        if (!window.Echo) return;
+
+        const activeChannels = [];
+
+        branches.forEach(branchId => {
+            const channelName = `branch.${branchId}`;
+            
+            const channel = window.Echo.private(channelName)
+                .listen('.BookingEvent', (e) => {
+                    const newNotification = {
+                        id: Date.now() + Math.random().toString(36).substr(2, 9),
+                        type: e.type,
+                        message: e.message,
+                        booking: e.booking,
+                        created_at: new Date().toISOString(),
+                        read: false
+                    };
+                    
+                    setNotifications(prev => [newNotification, ...prev].slice(0, 50));
+                    
+                    if (Notification.permission === 'granted') {
+                        new Notification('Howell Barbershop', { body: e.message });
+                    }
+
+                    // Auto-refresh the current dashboard page to pull fresh database status changes
+                    import('@inertiajs/react').then(({ router }) => {
+                        router.reload({ preserveScroll: true });
+                    });
+                });
+                
+            activeChannels.push({ name: channelName, channel });
+        });
+
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        return () => {
+            activeChannels.forEach(c => {
+                window.Echo.leave(c.name);
+            });
+        };
+    }, [JSON.stringify(branches)]);
+
+    const markAsRead = (id) => {
+        setNotifications(prev => 
+            prev.map(n => n.id === id ? { ...n, read: true } : n)
+        );
+    };
+
+    const markAllAsRead = () => {
+        setNotifications(prev => 
+            prev.map(n => ({ ...n, read: true }))
+        );
+    };
     
     // Collapsible sidebar state (persisted to localStorage)
     const [collapsed, setCollapsed] = useState(() => {
@@ -440,12 +527,66 @@ export default function AuthenticatedLayout({ header, children }) {
                     {/* Right: Notifications & Profile Dropdown */}
                     <div className="flex items-center space-x-6">
                         {/* Notifications Bell */}
-                        <button className="relative p-1.5 rounded-full hover:bg-surface-press-light text-on-light-muted hover:text-primary transition duration-200 cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5.5 h-5.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
-                            </svg>
-                            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-status-danger animate-pulse" />
-                        </button>
+                        <div className="relative">
+                            <button 
+                                onClick={() => setNotifDropdownOpen(!notifDropdownOpen)}
+                                className="relative p-1.5 rounded-full hover:bg-surface-press-light text-on-light-muted hover:text-primary transition duration-200 cursor-pointer focus:outline-none"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5.5 h-5.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+                                </svg>
+                                {unreadCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 w-4.5 h-4.5 rounded-full bg-status-danger text-[9px] font-bold text-white flex items-center justify-center animate-pulse">
+                                        {unreadCount}
+                                    </span>
+                                )}
+                            </button>
+
+                            {notifDropdownOpen && (
+                                <>
+                                    <div 
+                                        className="fixed inset-0 z-40" 
+                                        onClick={() => setNotifDropdownOpen(false)}
+                                    />
+                                    <div className="absolute right-0 mt-2.5 w-80 bg-white border border-hairline-cloud rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                                        <div className="px-4 py-2.5 border-b border-hairline-cloud flex justify-between items-center bg-surface-card">
+                                            <h4 className="font-semibold text-xs text-ink-deep">Notifikasi ({unreadCount})</h4>
+                                            {notifications.length > 0 && (
+                                                <button 
+                                                    onClick={markAllAsRead}
+                                                    className="text-[10px] font-bold text-[#7C5CBF] hover:text-[#4A2D8A] cursor-pointer"
+                                                >
+                                                    Tandai semua dibaca
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="max-h-72 overflow-y-auto">
+                                            {notifications.length === 0 ? (
+                                                <div className="px-4 py-8 text-center text-xs text-on-light-faint">
+                                                    Tidak ada notifikasi baru
+                                                </div>
+                                            ) : (
+                                                notifications.map((notif) => (
+                                                    <div 
+                                                        key={notif.id}
+                                                        onClick={() => {
+                                                            markAsRead(notif.id);
+                                                            setNotifDropdownOpen(false);
+                                                        }}
+                                                        className={`px-4 py-3 border-b border-hairline-cloud last:border-none cursor-pointer transition duration-150 hover:bg-surface-press-light ${!notif.read ? 'bg-[#2d1b69]/5 font-medium' : ''}`}
+                                                    >
+                                                        <p className="text-xs text-ink-deep leading-relaxed">{notif.message}</p>
+                                                        <span className="text-[9px] text-on-light-faint mt-1 block">
+                                                            {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
 
                         <div className="h-6 w-px bg-hairline-cloud" />
 

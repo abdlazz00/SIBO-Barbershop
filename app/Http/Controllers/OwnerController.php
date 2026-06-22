@@ -1115,10 +1115,12 @@ class OwnerController extends Controller
         ]);
 
         try {
-            $commissionService->processPayout($barber->id, $request->record_ids, $request->only([
+            $payout = $commissionService->processPayout($barber->id, $request->record_ids, $request->only([
                 'payment_method', 'reference_number', 'notes'
             ]));
-            return redirect()->back()->with('success', 'Pembayaran komisi berhasil diproses!');
+            return redirect()->back()
+                ->with('success', 'Pembayaran komisi berhasil diproses!')
+                ->with('latest_payout_id', $payout->id);
         } catch (\Exception $e) {
             return redirect()->back()->withErrors(['error' => $e->getMessage()]);
         }

@@ -33,6 +33,16 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user(),
+                'branches' => $request->user() 
+                    ? ($request->user()->role === 'owner' 
+                        ? \App\Models\Branch::pluck('id')->toArray() 
+                        : ($request->user()->branch_id ? [$request->user()->branch_id] : []))
+                    : [],
+            ],
+            'flash' => [
+                'success' => $request->session()->get('success'),
+                'error' => $request->session()->get('error'),
+                'latest_payout_id' => $request->session()->get('latest_payout_id'),
             ],
         ];
     }

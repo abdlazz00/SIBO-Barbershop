@@ -1,6 +1,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 
 export default function Dashboard({ 
     branches = [],
@@ -29,14 +30,17 @@ export default function Dashboard({
     // 1. SVG Chart Calculation
     const maxVal = Math.max(...chartData.map(d => d.revenue), 100000); // fallback to min maxVal
     const svgWidth = 800;
-    const svgHeight = 200;
-    const padding = 20;
+    const svgHeight = 260;
+    const paddingLeft = 70;
+    const paddingRight = 35;
+    const paddingTop = 55;
+    const paddingBottom = 40;
 
     // Calculate points for the SVG line/area
     const points = chartData.map((d, index) => {
-        const x = padding + (index / (chartData.length - 1)) * (svgWidth - padding * 2);
+        const x = paddingLeft + (index / (chartData.length - 1)) * (svgWidth - paddingLeft - paddingRight);
         // Invert Y axis for SVG (0 is top)
-        const y = svgHeight - padding - (d.revenue / maxVal) * (svgHeight - padding * 2);
+        const y = svgHeight - paddingBottom - (d.revenue / maxVal) * (svgHeight - paddingTop - paddingBottom);
         return { x, y, date: d.date, value: d.revenue };
     });
 
@@ -45,8 +49,13 @@ export default function Dashboard({
     }, '');
 
     const areaPathData = points.length > 0 
-        ? `${pathData} L ${points[points.length - 1].x} ${svgHeight - padding} L ${points[0].x} ${svgHeight - padding} Z`
+        ? `${pathData} L ${points[points.length - 1].x} ${svgHeight - paddingBottom} L ${points[0].x} ${svgHeight - paddingBottom} Z`
         : '';
+
+    const [isChartAnimated, setIsChartAnimated] = useState(false);
+    useEffect(() => {
+        setIsChartAnimated(true);
+    }, []);
 
     return (
         <AuthenticatedLayout
@@ -79,7 +88,12 @@ export default function Dashboard({
 
                     {/* Quick Stats Grid */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                        <div className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card flex flex-col justify-between">
+                        <motion.div 
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: 0.1 }}
+                            className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card flex flex-col justify-between"
+                        >
                             <div>
                                 <span className="text-[10px] font-bold text-on-light-muted uppercase tracking-wider block mb-1">Total Omset Bisnis</span>
                                 <span className="text-2xl font-bold font-display text-accent-violet-deep">
@@ -90,8 +104,14 @@ export default function Dashboard({
                                 <span>Jasa: <span className="text-ink font-semibold">Rp {new Intl.NumberFormat('id-ID').format(metrics.service_revenue || 0)}</span></span>
                                 <span>Retail: <span className="text-ink font-semibold">Rp {new Intl.NumberFormat('id-ID').format(metrics.product_revenue || 0)}</span></span>
                             </div>
-                        </div>
-                        <div className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card flex flex-col justify-between">
+                        </motion.div>
+                        
+                        <motion.div 
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: 0.2 }}
+                            className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card flex flex-col justify-between"
+                        >
                             <div>
                                 <span className="text-[10px] font-bold text-on-light-muted uppercase tracking-wider block mb-1">Grooming Selesai</span>
                                 <span className="text-2xl font-bold font-display text-ink-deep">
@@ -101,8 +121,14 @@ export default function Dashboard({
                             <div className="mt-3 pt-2 border-t border-hairline-cloud/50 text-[10px] text-on-light-muted font-medium">
                                 <span>Melalui booking online & walk-in</span>
                             </div>
-                        </div>
-                        <div className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card flex flex-col justify-between">
+                        </motion.div>
+                        
+                        <motion.div 
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: 0.3 }}
+                            className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card flex flex-col justify-between"
+                        >
                             <div>
                                 <span className="text-[10px] font-bold text-on-light-muted uppercase tracking-wider block mb-1">Produk Retail Terjual</span>
                                 <span className="text-2xl font-bold font-display text-ink-deep">
@@ -112,8 +138,14 @@ export default function Dashboard({
                             <div className="mt-3 pt-2 border-t border-hairline-cloud/50 text-[10px] text-on-light-muted font-medium">
                                 <span>Penjualan produk pomade, hair styling, dll.</span>
                             </div>
-                        </div>
-                        <div className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card border-l-4 border-l-booking-completed flex flex-col justify-between">
+                        </motion.div>
+                        
+                        <motion.div 
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: 0.4 }}
+                            className="bg-white p-5 border border-hairline-cloud rounded-card shadow-card border-l-4 border-l-booking-completed flex flex-col justify-between"
+                        >
                             <div>
                                 <span className="text-[10px] font-bold text-on-light-muted uppercase tracking-wider block mb-1">Komisi Barber Terbayar</span>
                                 <span className="text-2xl font-bold font-display text-booking-completed">
@@ -124,7 +156,7 @@ export default function Dashboard({
                                 <span>Lunas: <span className="text-booking-completed font-semibold">Rp {new Intl.NumberFormat('id-ID').format(metrics.commissions || 0)}</span></span>
                                 <span>Pending: <span className="text-booking-cancelled font-semibold">Rp {new Intl.NumberFormat('id-ID').format(metrics.commissions_unpaid || 0)}</span></span>
                             </div>
-                        </div>
+                        </motion.div>
                     </div>
 
                     {/* 30-Day Revenue Chart (Bespoke Pure SVG Chart with Tooltip) */}
@@ -135,24 +167,28 @@ export default function Dashboard({
                         </div>
 
                         <div className="w-full overflow-x-auto">
-                            <div className="min-w-[700px] h-[220px] relative">
+                            <div className="min-w-[700px] h-[260px] relative">
                                 {/* HTML Floating Tooltip */}
-                                {hoveredIndex !== null && points[hoveredIndex] && (
-                                    <div 
-                                        className="absolute z-10 bg-ink-deep text-white text-[11px] p-2.5 rounded-lg shadow-lg border border-hairline-violet pointer-events-none transform -translate-x-1/2 -translate-y-full transition-all duration-150"
-                                        style={{ 
-                                            left: `${(points[hoveredIndex].x / svgWidth) * 100}%`, 
-                                            top: `${(points[hoveredIndex].y / svgHeight) * 100 - 8}%` 
-                                        }}
-                                    >
-                                        <div className="font-bold text-accent-lime">{points[hoveredIndex].date}</div>
-                                        <div className="font-mono text-white mt-0.5 font-bold">
-                                            Rp {new Intl.NumberFormat('id-ID').format(points[hoveredIndex].value)}
+                                {hoveredIndex !== null && points[hoveredIndex] && (() => {
+                                    const isNearTop = points[hoveredIndex].y < 100;
+                                    return (
+                                        <div 
+                                            className="absolute z-10 bg-ink-deep text-white text-[11px] p-2.5 rounded-lg shadow-lg border border-hairline-violet pointer-events-none transition-all duration-150"
+                                            style={{ 
+                                                left: `${(points[hoveredIndex].x / svgWidth) * 100}%`, 
+                                                top: `${(points[hoveredIndex].y / svgHeight) * 100}%`,
+                                                transform: `translate(-50%, ${isNearTop ? '15px' : 'calc(-100% - 15px)'})`
+                                            }}
+                                        >
+                                            <div className="font-bold text-accent-lime">{points[hoveredIndex].date}</div>
+                                            <div className="font-mono text-white mt-0.5 font-bold">
+                                                Rp {new Intl.NumberFormat('id-ID').format(points[hoveredIndex].value)}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
-                                <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full">
+                                <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full" preserveAspectRatio="none">
                                     <defs>
                                         <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="0%" stopColor="#7C5CBF" stopOpacity="0.25" />
@@ -160,25 +196,108 @@ export default function Dashboard({
                                         </linearGradient>
                                     </defs>
 
-                                    {/* Grid Lines */}
-                                    <line x1={padding} y1={padding} x2={svgWidth - padding} y2={padding} stroke="#E5E7EB" strokeWidth="0.5" strokeDasharray="3" />
-                                    <line x1={padding} y1={svgHeight / 2} x2={svgWidth - padding} y2={svgHeight / 2} stroke="#E5E7EB" strokeWidth="0.5" strokeDasharray="3" />
-                                    <line x1={padding} y1={svgHeight - padding} x2={svgWidth - padding} y2={svgHeight - padding} stroke="#E5E7EB" strokeWidth="1" />
+                                    {/* Y-Axis Gridlines and Labels */}
+                                    {[0, 1, 2, 3].map((valIdx) => {
+                                        const val = (maxVal / 3) * valIdx;
+                                        const y = svgHeight - paddingBottom - (val / maxVal) * (svgHeight - paddingTop - paddingBottom);
+                                        return (
+                                            <g key={`y-grid-${valIdx}`}>
+                                                <line 
+                                                    x1={paddingLeft} 
+                                                    y1={y} 
+                                                    x2={svgWidth - paddingRight} 
+                                                    y2={y} 
+                                                    stroke="#E5E7EB" 
+                                                    strokeWidth={valIdx === 0 ? "1" : "0.5"} 
+                                                    strokeDasharray={valIdx === 0 ? "0" : "3"} 
+                                                />
+                                                <text 
+                                                    x={paddingLeft - 10} 
+                                                    y={y} 
+                                                    textAnchor="end" 
+                                                    dominantBaseline="middle" 
+                                                    fill="#6B5A8E" 
+                                                    fontSize="9" 
+                                                    fontWeight="bold"
+                                                    className="font-mono text-[9px]"
+                                                >
+                                                    Rp {new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 1 }).format(val)}
+                                                </text>
+                                            </g>
+                                        );
+                                    })}
+
+                                    {/* X-Axis Gridlines and Labels */}
+                                    {points.map((p, index) => {
+                                        const shouldShowLabel = index === 0 || index === points.length - 1 || (index % 5 === 0 && index !== points.length - 2);
+                                        return (
+                                            <g key={`x-lbl-${index}`}>
+                                                {shouldShowLabel && (
+                                                    <>
+                                                        <line 
+                                                            x1={p.x} 
+                                                            y1={paddingTop} 
+                                                            x2={p.x} 
+                                                            y2={svgHeight - paddingBottom} 
+                                                            stroke="#E5E7EB" 
+                                                            strokeWidth="0.5" 
+                                                            strokeDasharray="2" 
+                                                        />
+                                                        <text 
+                                                            x={p.x} 
+                                                            y={svgHeight - paddingBottom + 18} 
+                                                            textAnchor="middle" 
+                                                            fill="#6B5A8E" 
+                                                            fontSize="9" 
+                                                            fontWeight="bold"
+                                                        >
+                                                            {p.date}
+                                                        </text>
+                                                    </>
+                                                )}
+                                            </g>
+                                        );
+                                    })}
 
                                     {/* Area path */}
                                     {areaPathData && (
-                                        <path d={areaPathData} fill="url(#chart-area-grad)" />
+                                        <motion.path 
+                                            d={areaPathData} 
+                                            fill="url(#chart-area-grad)" 
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: 0.8, duration: 0.8 }}
+                                        />
                                     )}
 
                                     {/* Line path */}
                                     {pathData && (
-                                        <path d={pathData} fill="none" stroke="#7C5CBF" strokeWidth="2.5" strokeLinecap="round" />
+                                        <motion.path 
+                                            d={pathData} 
+                                            fill="none" 
+                                            stroke="#7C5CBF" 
+                                            strokeWidth="2.5" 
+                                            strokeLinecap="round" 
+                                            initial={{ pathLength: 0 }}
+                                            animate={{ pathLength: 1 }}
+                                            transition={{ duration: 1.5, ease: "easeInOut" }}
+                                        />
                                     )}
 
                                     {/* Points and Tooltips */}
                                     {points.map((p, index) => (
                                         <g key={index}>
-                                            <circle cx={p.x} cy={p.y} r="3.5" fill="#ffffff" stroke="#7C5CBF" strokeWidth="2" />
+                                            <motion.circle 
+                                                cx={p.x} 
+                                                cy={p.y} 
+                                                r="3.5" 
+                                                fill="#ffffff" 
+                                                stroke="#7C5CBF" 
+                                                strokeWidth="2" 
+                                                initial={{ scale: 0 }}
+                                                animate={{ scale: 1 }}
+                                                transition={{ delay: 0.8 + (index / points.length) * 0.5, duration: 0.3 }}
+                                            />
                                             
                                             {/* Hover zone for triggering tooltip */}
                                             <circle 
@@ -202,13 +321,6 @@ export default function Dashboard({
                                                     strokeWidth="2.5" 
                                                     className="pointer-events-none"
                                                 />
-                                            )}
-                                            
-                                            {/* Date labels on x axis for first, middle, last */}
-                                            {(index === 0 || index === 14 || index === 29) && (
-                                                <text x={p.x} y={svgHeight - 4} textAnchor="middle" fill="#6B5A8E" fontSize="9" fontWeight="bold">
-                                                    {p.date}
-                                                </text>
                                             )}
                                         </g>
                                     ))}
@@ -236,23 +348,36 @@ export default function Dashboard({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-hairline-cloud">
-                                        {barbersPerformance.length > 0 ? (
-                                            barbersPerformance.map((bp) => (
-                                                <tr key={bp.id} className="hover:bg-surface-card/40 transition">
-                                                    <td className="py-3 px-4">
-                                                        <span className="font-bold text-ink-deep block">{bp.name}</span>
-                                                        <span className="text-[10px] text-on-light-muted">{bp.branch_name}</span>
-                                                    </td>
-                                                    <td className="py-3 px-4 text-center font-semibold">{bp.bookings_count} Booking</td>
-                                                    <td className="py-3 px-4 text-right font-semibold text-ink-deep">
-                                                        Rp {new Intl.NumberFormat('id-ID').format(bp.revenue)}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-right font-bold text-booking-completed">
-                                                        Rp {new Intl.NumberFormat('id-ID').format(bp.commissions)}
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        ) : (
+                                        {barbersPerformance.length > 0 ? (() => {
+                                            const maxRevenue = Math.max(...barbersPerformance.map(bp => bp.revenue), 1);
+                                            return barbersPerformance.map((bp) => {
+                                                const pct = (bp.revenue / maxRevenue) * 100;
+                                                return (
+                                                    <tr key={bp.id} className="hover:bg-surface-card/40 transition">
+                                                        <td className="py-3 px-4 w-5/12">
+                                                            <span className="font-bold text-ink-deep block">{bp.name}</span>
+                                                            <span className="text-[10px] text-on-light-muted block mb-1.5">{bp.branch_name}</span>
+                                                            {/* Inline revenue share bar */}
+                                                            <div className="w-full h-1 bg-hairline-cloud rounded-full overflow-hidden">
+                                                                <motion.div 
+                                                                    className="h-full bg-accent-violet rounded-full"
+                                                                    initial={{ width: 0 }}
+                                                                    animate={{ width: `${pct}%` }}
+                                                                    transition={{ duration: 1.2, ease: "easeOut" }}
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center font-semibold">{bp.bookings_count} Booking</td>
+                                                        <td className="py-3 px-4 text-right font-semibold text-ink-deep">
+                                                            Rp {new Intl.NumberFormat('id-ID').format(bp.revenue)}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-right font-bold text-booking-completed">
+                                                            Rp {new Intl.NumberFormat('id-ID').format(bp.commissions)}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            });
+                                        })() : (
                                             <tr>
                                                 <td colSpan="4" className="py-8 text-center text-on-light-muted italic">
                                                     Belum ada data performa barber masuk.
@@ -270,23 +395,38 @@ export default function Dashboard({
                                 <h3 className="font-display font-bold text-base text-ink-deep">Layanan Terlaris</h3>
                             </div>
                             <div className="p-4 space-y-3">
-                                {topServices.length > 0 ? (
-                                    topServices.map((s, idx) => (
-                                        <div key={idx} className="flex items-center gap-3 p-3 border border-hairline-cloud rounded bg-surface-card/20 hover:bg-surface-card/45 transition">
-                                            <div className="w-5 h-5 rounded-full bg-accent-violet/10 text-accent-violet-deep flex items-center justify-center font-bold text-[10px] shrink-0">
-                                                {idx + 1}
+                                {topServices.length > 0 ? (() => {
+                                    const maxQty = Math.max(...topServices.map(s => s.total_qty), 1);
+                                    return topServices.map((s, idx) => {
+                                        const pct = (s.total_qty / maxQty) * 100;
+                                        return (
+                                            <div key={idx} className="p-3 border border-hairline-cloud rounded bg-surface-card/20 hover:bg-surface-card/45 transition space-y-2.5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-5 h-5 rounded-full bg-accent-violet/10 text-accent-violet-deep flex items-center justify-center font-bold text-[10px] shrink-0">
+                                                        {idx + 1}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className="font-bold text-xs text-ink-deep block truncate">{s.name}</span>
+                                                        <span className="text-[9px] text-on-light-muted block">{s.category}</span>
+                                                    </div>
+                                                    <div className="text-right shrink-0">
+                                                        <span className="text-xs font-bold text-accent-violet-deep block">{s.total_qty}x</span>
+                                                        <span className="text-[8px] text-on-light-muted block">Dipesan</span>
+                                                    </div>
+                                                </div>
+                                                {/* Bar Chart representation */}
+                                                <div className="w-full h-1.5 bg-hairline-cloud rounded-full overflow-hidden">
+                                                    <motion.div 
+                                                        className="h-full bg-gradient-to-r from-accent-violet to-accent-lime-muted rounded-full"
+                                                        initial={{ width: 0 }}
+                                                        animate={{ width: `${pct}%` }}
+                                                        transition={{ duration: 1.2, ease: "easeOut", delay: 0.1 * idx }}
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <span className="font-bold text-xs text-ink-deep block truncate">{s.name}</span>
-                                                <span className="text-[9px] text-on-light-muted block">{s.category}</span>
-                                            </div>
-                                            <div className="text-right shrink-0">
-                                                <span className="text-xs font-bold text-accent-violet-deep block">{s.total_qty}x</span>
-                                                <span className="text-[8px] text-on-light-muted block">Dipesan</span>
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
+                                        );
+                                    });
+                                })() : (
                                     <p className="text-xs text-on-light-muted italic text-center py-8">
                                         Belum ada data layanan dipesan.
                                     </p>

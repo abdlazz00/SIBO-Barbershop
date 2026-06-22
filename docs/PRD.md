@@ -720,6 +720,17 @@ Tampilan Barber (Self View):
 - Hanya data komisi miliknya sendiri
 - Rincian per booking: tanggal, customer, service, harga, komisi per transaksi
 
+#### 7.10.3 Pencairan & Pembayaran Komisi (Payout)
+
+**Aktor**: Owner (yang memproses pembayaran), Barber (yang melihat riwayat pencairan dirinya)
+
+**Alur Kerja Payout:**
+1. **Penyaringan Data**: Owner membuka daftar komisi unpaid per barber.
+2. **Pemilihan Transaksi**: Owner memilih satu atau beberapa transaksi komisi belum terbayar untuk diproses.
+3. **Perekaman Pembayaran**: Owner menginput metode pembayaran (Tunai / Transfer Bank), nomor referensi transfer (jika transfer), dan catatan tambahan.
+4. **Cetak Bukti Payout**: Setelah pembayaran berhasil diproses, sistem menampilkan dan mencetak kwitansi bukti pembayaran komisi (payout receipt) yang menggabungkan rincian seluruh item transaksi komisi tersebut ke dalam satu lembar cetak payout.
+5. **Riwayat Payout**: Data payout tersimpan dan dapat diakses kembali oleh Owner maupun Barber yang bersangkutan melalui tab "Riwayat Pencairan Komisi (Payout)".
+
 ---
 
 ### 7.11 Dashboard per Role

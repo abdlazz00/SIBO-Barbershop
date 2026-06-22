@@ -99,7 +99,20 @@ class BookingService
             $bookingData['guest_phone'] = $data['guest_phone'];
         }
 
-        return $this->bookingRepo->create($bookingData);
+        $booking = $this->bookingRepo->create($bookingData);
+
+        try {
+            $customerName = $booking->customer ? $booking->customer->name : $booking->guest_name;
+            $serviceName = $booking->service ? $booking->service->name : 'layanan';
+            $timeStr = $booking->slot_start->format('H:i');
+            $message = "Booking baru dari {$customerName} untuk {$serviceName} pada pukul {$timeStr}";
+            
+            broadcast(new \App\Events\BookingEvent('booking.created', $booking, $message));
+        } catch (\Exception $e) {
+            logger()->error('Gagal melakukan broadcast event booking.created: ' . $e->getMessage());
+        }
+
+        return $booking;
     }
 
     public function getAvailableSlots(int $barberId, string $date, int $serviceId)

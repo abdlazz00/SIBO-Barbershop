@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 export default function Commissions({ branches = [], barbers = [], records = [], unpaidGrouped = [], totals, filters }) {
@@ -24,6 +24,17 @@ export default function Commissions({ branches = [], barbers = [], records = [],
     const [processingSubmit, setProcessingSubmit] = useState(false);
     const [receiptModalOpen, setReceiptModalOpen] = useState(false);
     const [selectedPayout, setSelectedPayout] = useState(null);
+    const [isNewPayout, setIsNewPayout] = useState(false);
+
+    useEffect(() => {
+        if (receiptModalOpen && selectedPayout && isNewPayout) {
+            const timer = setTimeout(() => {
+                window.print();
+                setIsNewPayout(false);
+            }, 600);
+            return () => clearTimeout(timer);
+        }
+    }, [receiptModalOpen, selectedPayout, isNewPayout]);
 
     const handleFilter = (e) => {
         e.preventDefault();
@@ -105,10 +116,45 @@ export default function Commissions({ branches = [], barbers = [], records = [],
             reference_number: referenceNumber,
             notes: notes
         }, {
-            onSuccess: () => {
+            onSuccess: (page) => {
                 setPayoutModalOpen(false);
                 setProcessingSubmit(false);
-                openHistoryModal(selectedBarber);
+                
+                const latestPayoutId = page.props.flash?.latest_payout_id;
+                
+                // Fetch the updated payouts for the barber and open history modal in the background
+                setLoadingHistory(true);
+                setHistoryModalOpen(true);
+                setPayoutHistory([]);
+                
+                axios.get(route('owner.commissions.payouts', selectedBarber.barber_id))
+                    .then(res => {
+                        const payouts = res.data.payouts || [];
+                        setPayoutHistory(payouts);
+                        
+                        // Find the new payout by ID or fallback to the newest one
+                        const newPayout = latestPayoutId 
+                            ? payouts.find(p => p.id === latestPayoutId)
+                            : payouts[0];
+                            
+                        if (newPayout) {
+                            setSelectedPayout(newPayout);
+                            setIsNewPayout(true);
+                            setReceiptModalOpen(true);
+                        }
+
+                        // Reset form fields
+                        setSelectedRecordIds([]);
+                        setPaymentMethod('bank_transfer');
+                        setReferenceNumber('');
+                        setNotes('');
+                    })
+                    .catch(err => {
+                        console.error(err);
+                    })
+                    .finally(() => {
+                        setLoadingHistory(false);
+                    });
             },
             onError: (errors) => {
                 alert('Error: ' + (errors.error || 'Gagal memproses pembayaran komisi.'));

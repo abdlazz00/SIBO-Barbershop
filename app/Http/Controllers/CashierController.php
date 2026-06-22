@@ -175,6 +175,17 @@ class CashierController extends Controller
             'status' => $request->status,
         ]);
 
+        $freshBooking = $booking->fresh();
+        try {
+            $statusLabel = $request->status === 'in_progress' ? 'dimulai' : 'dibatalkan';
+            $customerName = $freshBooking->customer ? $freshBooking->customer->name : $freshBooking->guest_name;
+            $message = "Booking untuk {$customerName} telah {$statusLabel}";
+            
+            broadcast(new \App\Events\BookingEvent('booking.updated', $freshBooking, $message));
+        } catch (\Exception $e) {
+            logger()->error('Gagal melakukan broadcast event booking.updated: ' . $e->getMessage());
+        }
+
         return back()->with('success', 'Status booking berhasil diperbarui.');
     }
 

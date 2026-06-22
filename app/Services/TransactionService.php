@@ -203,6 +203,16 @@ class TransactionService
                 $this->bookingRepo->update($booking->id, [
                     'status' => 'completed',
                 ]);
+
+                $freshBooking = $booking->fresh();
+                try {
+                    $customerName = $freshBooking->customer ? $freshBooking->customer->name : $freshBooking->guest_name;
+                    $message = "Layanan untuk {$customerName} telah selesai dan dibayar";
+                    
+                    broadcast(new \App\Events\BookingEvent('booking.completed', $freshBooking, $message));
+                } catch (\Exception $e) {
+                    logger()->error('Gagal melakukan broadcast event booking.completed: ' . $e->getMessage());
+                }
             }
 
             return $transaction;
